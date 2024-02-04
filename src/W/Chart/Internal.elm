@@ -71,7 +71,7 @@ type ChartElementHover msg x y z datasets
     = HoverX (RenderDataFull msg x y z -> DataPoint x -> Svg.Svg msg)
     | HoverY (RenderDataFull msg x y z -> RenderDataYZ x y -> DataPoint x -> DataPoint y -> Svg.Svg msg)
     | HoverZ (RenderDataFull msg x y z -> RenderDataYZ x z -> DataPoint x -> DataPoint z -> Svg.Svg msg)
-    | HoverYZ (RenderDataFull msg x y z -> RenderDataYZ x y -> RenderDataYZ x z -> DataPoint x -> DataPoint y -> DataPoint z -> Svg.Svg msg)
+    | HoverYZ (RenderDataFull msg x y z -> RenderDataYZ x y -> RenderDataYZ x z -> ChartPoint x y z -> Svg.Svg msg)
 
 
 

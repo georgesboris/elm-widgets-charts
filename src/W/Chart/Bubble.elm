@@ -23,6 +23,8 @@ import TypedSvg.Types as ST
 import W.Chart
 import W.Chart.ChartElement
 import W.Chart.Internal
+import W.Svg.Attributes
+import W.Svg.Circle
 
 
 
@@ -95,7 +97,7 @@ view toYZ withHover props attrs =
                                         , W.Chart.Internal.attrAnimationDelay d.spacings point.x.valueScaled point.yz.valueScaled
                                         , SA.class [ "ew-charts--animate-scale" ]
                                         ]
-                                        [ viewBubble yzData attrs bubbleData point
+                                        [ viewBubble [] yzData attrs bubbleData point
                                         ]
                                 )
                             |> W.Chart.Internal.viewTranslateChart d.spacings
@@ -105,6 +107,17 @@ view toYZ withHover props attrs =
         |> withHover
             (\d yzData xPoint yzPoint ->
                 let
+                    color : String
+                    color =
+                        attrs.toColor
+                            { x = xPoint
+                            , yz = yzPoint
+                            , yzDomain = Scale.domain yzData.scale
+                            , yzColor = yzData.toColor yzPoint.datum
+                            , radius = props.toRadius xPoint.datum ( yzPoint.datum, yzPoint.value )
+                            , radiusDomain = bubbleData.radiusDomain
+                            }
+
                     bubbleData : BubbleData x a
                     bubbleData =
                         toBubbleData
@@ -113,7 +126,16 @@ view toYZ withHover props attrs =
                             , toRadius = props.toRadius
                             }
                 in
-                viewBubble yzData
+                viewBubble
+                    [ SA.opacity (ST.Opacity 0.5)
+                    , W.Svg.Attributes.dropShadow
+                        { xOffset = 0
+                        , yOffset = 0
+                        , radius = 4.0
+                        , color = color
+                        }
+                    ]
+                    yzData
                     attrs
                     bubbleData
                     { x = xPoint
@@ -124,7 +146,8 @@ view toYZ withHover props attrs =
 
 
 viewBubble :
-    W.Chart.Internal.RenderDataYZ x a
+    List (Svg.Attribute msg)
+    -> W.Chart.Internal.RenderDataYZ x a
     -> AttributesYZ msg x a
     -> BubbleData x a
     ->
@@ -133,7 +156,7 @@ viewBubble :
         , radius : Float
         }
     -> Svg.Svg msg
-viewBubble yzData attrs bubbleData point =
+viewBubble svgAttrs yzData attrs bubbleData point =
     let
         color : String
         color =
@@ -146,27 +169,18 @@ viewBubble yzData attrs bubbleData point =
                 , radiusDomain = bubbleData.radiusDomain
                 }
     in
-    S.g []
-        [ S.circle
-            [ SAP.cx point.x.valueScaled
-            , SAP.cy point.yz.valueScaled
-            , SAP.r (Scale.convert bubbleData.radiusScale point.radius)
-            , SAP.strokeWidth 2
-            , Svg.Attributes.stroke Theme.baseBackground
-            , Svg.Attributes.fill Theme.baseBackground
-            ]
-            []
-        , S.circle
-            [ SAP.cx point.x.valueScaled
-            , SAP.cy point.yz.valueScaled
-            , SAP.r (Scale.convert bubbleData.radiusScale point.radius)
-            , SA.fillOpacity (ST.Opacity 0.6)
-            , SAP.strokeWidth 2
-            , Svg.Attributes.stroke color
-            , Svg.Attributes.fill color
-            ]
-            []
-        ]
+    W.Svg.Circle.view
+        (svgAttrs
+            ++ [ Svg.Attributes.fill Theme.baseBackground
+               , SA.fillOpacity (ST.Opacity 0.6)
+               , Svg.Attributes.stroke color
+               , Svg.Attributes.fill color
+               ]
+        )
+        { x = point.x.valueScaled
+        , y = point.yz.valueScaled
+        , radius = Scale.convert bubbleData.radiusScale point.radius
+        }
 
 
 

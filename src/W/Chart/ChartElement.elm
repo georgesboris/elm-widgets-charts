@@ -132,9 +132,7 @@ withHoverYZ :
     (W.Chart.Internal.RenderDataFull msg x y z
      -> W.Chart.Internal.RenderDataYZ x y
      -> W.Chart.Internal.RenderDataYZ x z
-     -> DataPoint x
-     -> DataPoint y
-     -> DataPoint z
+     -> W.Chart.Internal.ChartPoint x y z
      -> Svg.Svg msg
     )
     -> ChartElement msg x y z { with | yData : (), zData : () }

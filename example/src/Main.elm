@@ -16,7 +16,7 @@ import W.Styles
 main : H.Html msg
 main =
     viewCharts
-        (W.Chart.config [ W.Chart.debug ]
+        (W.Chart.config []
             { data = List.range 0 10
             , toLabel = String.fromInt
             }
@@ -35,7 +35,8 @@ main =
                 , toValue = \{ toValue } x -> Just (toValue (toFloat x))
                 }
         )
-        [ [ W.Chart.Bubble.viewZ
+        [ [ W.Chart.Line.yLine, W.Chart.Line.zLine ]
+        , [ W.Chart.Bubble.viewZ
                 [ W.Chart.Bubble.colorFromRadiusPercentile
                     (Scale.Color.viridisInterpolator >> Color.toCssString)
                 ]
@@ -48,7 +49,6 @@ main =
                 { toRadius = \x _ -> toFloat x / 20
                 }
           ]
-        , [ W.Chart.Line.yLine, W.Chart.Line.zLine ]
         , [ W.Chart.Bar.yzBars ]
         ]
 

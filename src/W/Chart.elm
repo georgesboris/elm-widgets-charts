@@ -517,7 +517,8 @@ viewHoverData d widgets point =
                                 W.Chart.Internal.HoverYZ fn ->
                                     Maybe.map2
                                         (\yData zData ->
-                                            List.map2 (fn d yData zData point.x) point.ys point.zs
+                                            fn d yData zData point
+                                                |> List.singleton
                                         )
                                         d.y
                                         d.z
@@ -815,6 +816,9 @@ globalStyles =
                 display: block;
             }
 
+            .ew-charts--shadow {
+                filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.5));
+            }
 
             .ew-charts.m--debug .ew-charts--hover-target {
                 fill: rgba(255, 0, 0, 0.05);
@@ -889,6 +893,32 @@ globalStyles =
             }
             .ew-charts--x-axis .tick line {
                 stroke: """ ++ Theme.baseAux ++ """;
+            }
+
+            .ew-charts--animate-fade {
+                animation: ew-charts--fade 0.4s ease-out forwards;
+            }
+
+            @keyframes ew-charts--fade {
+                from {
+                    opacity: 0;
+                }
+                to {
+                    opacity: 1;
+                }
+            }
+
+            .ew-charts--animate-h-clip {
+                animation: ew-charts--h-clip 0.4s ease-out forwards;
+            }
+
+            @keyframes ew-charts--h-clip {
+                from {
+                    clip-path: rect(0 0 0 0);
+                }
+                to {
+                    clip-path: rect(0 100% 100% 0);
+                }
             }
 
             .ew-charts--animate-scale {

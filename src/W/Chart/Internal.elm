@@ -1,12 +1,18 @@
 module W.Chart.Internal exposing
     ( Attribute(..)
     , Attributes
+    , AxisAttributes
     , AxisConfig
     , AxisType(..)
+    , ChartElement(..)
+    , ChartElementData
+    , ChartElementHover(..)
+    , ChartPoint
+    , ChartPointDict
     , Config(..)
     , DataAttrs
-    , Element(..)
-    , ElementData
+    , DataPoint
+    , HoverTarget(..)
     , RenderData(..)
     , RenderDataFull
     , RenderDataX
@@ -15,41 +21,61 @@ module W.Chart.Internal exposing
     , Spacings
     , StackType(..)
     , applyAttrs
+    , attrAnimationDelay
+    , attrTransformOrigin
+    , bounds
+    , boundsAt
+    , defaultAttrs
+    , defaultAxisAttributes
+    , isJust
+    , maybeFilter
     , toAxis
     , toRenderData
+    , viewHtml
     , viewTranslate
     , viewTranslateChart
     )
 
 import Axis
+import Dict
 import Html as H
+import Html.Attributes as HA
 import Scale
+import Set
 import Shape
+import Statistics
 import Svg
 import TypedSvg as S
 import TypedSvg.Attributes as SA
 import TypedSvg.Core as SC
 import TypedSvg.Types as ST
-import W.Chart.Internal.Scale
 
 
-type Element msg x y z constraints
-    = Element (ElementData msg x y z constraints)
+
+-- DataPoint
 
 
-type alias ElementData msg x y z constraints =
-    { main : Maybe (RenderData msg x y z constraints -> Svg.Svg msg)
-    , foreground : Maybe (RenderData msg x y z constraints -> Svg.Svg msg)
+type ChartElement msg x y z datasets
+    = ChartElement (ChartElementData msg x y z datasets)
+
+
+type alias ChartElementData msg x y z datasets =
+    { main : Maybe (RenderData msg x y z datasets -> Svg.Svg msg)
+    , background : Maybe (RenderData msg x y z datasets -> Svg.Svg msg)
+    , foreground : Maybe (RenderData msg x y z datasets -> Svg.Svg msg)
+    , hover : Maybe (ChartElementHover msg x y z datasets)
     }
+
+
+type ChartElementHover msg x y z datasets
+    = HoverX (RenderDataFull msg x y z -> DataPoint x -> Svg.Svg msg)
+    | HoverY (RenderDataFull msg x y z -> RenderDataYZ x y -> DataPoint x -> DataPoint y -> Svg.Svg msg)
+    | HoverZ (RenderDataFull msg x y z -> RenderDataYZ x z -> DataPoint x -> DataPoint z -> Svg.Svg msg)
+    | HoverYZ (RenderDataFull msg x y z -> RenderDataYZ x y -> RenderDataYZ x z -> DataPoint x -> DataPoint y -> DataPoint z -> Svg.Svg msg)
 
 
 
 -- Constants
-
-
-lineStrokeWidth : Float
-lineStrokeWidth =
-    2
 
 
 xAxisPadding : Float
@@ -62,18 +88,13 @@ yAxisPadding =
     62
 
 
-labelFontSize : Float
-labelFontSize =
-    13
-
-
 
 -- Types
 
 
-type Config msg x y z constraints
+type Config msg x y z datasets
     = Config
-        { attrs : List (Attribute msg)
+        { attrs : Attributes msg
         , xData : DataAttrs x x
         , yData : Maybe (DataAttrs x y)
         , zData : Maybe (DataAttrs x z)
@@ -88,7 +109,7 @@ type alias DataAttrs x a =
     }
 
 
-type RenderData msg x y z constraints
+type RenderData msg x y z datasets
     = RenderData (RenderDataFull msg x y z)
 
 
@@ -98,6 +119,27 @@ type alias RenderDataFull msg x y z =
     , x : RenderDataX x
     , y : Maybe (RenderDataYZ x y)
     , z : Maybe (RenderDataYZ x z)
+    , points : ChartPointDict x y z
+    }
+
+
+type alias ChartPointDict x y z =
+    { byX : Dict.Dict Float (ChartPoint x y z)
+    , byXY : Dict.Dict ( Float, Float ) (ChartPoint x y z)
+    }
+
+
+type alias ChartPoint x y z =
+    { x : DataPoint x
+    , ys : List (DataPoint y)
+    , zs : List (DataPoint z)
+    }
+
+
+type alias DataPoint a =
+    { datum : a
+    , value : Float
+    , valueScaled : Float
     }
 
 
@@ -119,25 +161,29 @@ type alias RenderDataYZ x a =
     , scale : Scale.ContinuousScale Float
     , stack : Shape.StackResult a
     , bandData : List ( a, List ( Float, Float ) )
+    , values :
+        List
+            { datum : a
+            , color : String
+            , label : String
+            , domain : ( Float, Float )
+            , stackedValues : List ( Float, Float )
+            }
     }
 
 
-toRenderData : Config msg x y z constraints -> RenderData msg x y z constraints
+toRenderData : Config msg x y z datasets -> RenderData msg x y z datasets
 toRenderData (Config cfg) =
     let
-        attrs : Attributes msg
-        attrs =
-            applyAttrs cfg.attrs
-
         spacings : Spacings
         spacings =
-            toSpacings attrs
+            toSpacings cfg.attrs
 
         bandScale : Scale.BandScale x
         bandScale =
             Scale.band
-                { paddingOuter = attrs.binPaddingOuter
-                , paddingInner = attrs.binPaddingOuter
+                { paddingOuter = 0.0
+                , paddingInner = 0.0
                 , align = 0.5
                 }
                 ( 0, spacings.chart.width )
@@ -162,7 +208,7 @@ toRenderData (Config cfg) =
                             { spacings = spacings
                             , xData = cfg.xData
                             , axisData = yData
-                            , axisConfig = attrs.yAxis
+                            , axisConfig = cfg.attrs.yAxis
                             }
                     )
 
@@ -175,33 +221,131 @@ toRenderData (Config cfg) =
                             { spacings = spacings
                             , xData = cfg.xData
                             , axisData = zData
-                            , axisConfig = attrs.zAxis
+                            , axisConfig = cfg.attrs.zAxis
                             }
                     )
 
         -- If both X and Z are defined
         -- we normalize them so their 0.0 match.
         ( yNormalized, zNormalized ) =
-            case ( ( yBefore, zBefore ), ( attrs.yAxis.scale, attrs.zAxis.scale ) ) of
+            case ( ( yBefore, zBefore ), ( cfg.attrs.yAxis.scale, cfg.attrs.zAxis.scale ) ) of
                 ( ( Just y, Just z ), ( Linear, Linear ) ) ->
-                    let
-                        ( yScale, zScale ) =
-                            W.Chart.Internal.Scale.normalizeLinear y.scale z.scale
-                    in
-                    ( Just { y | scale = yScale }
-                    , Just { z | scale = zScale }
-                    )
+                    -- let
+                    --     ( yScale, zScale ) =
+                    --         W.Chart.Internal.Scale.normalizeLinear y.scale z.scale
+                    -- in
+                    -- ( Just { y | scale = yScale }
+                    -- , Just { z | scale = zScale }
+                    -- )
+                    ( yBefore, zBefore )
 
                 _ ->
                     ( yBefore, zBefore )
     in
     RenderData
-        { attrs = attrs
+        { attrs = cfg.attrs
         , spacings = spacings
         , x = x
         , y = yNormalized
         , z = zNormalized
+        , points = toChartPointDict x yNormalized zNormalized
         }
+
+
+toChartPointDict :
+    RenderDataX x
+    -> Maybe (RenderDataYZ x y)
+    -> Maybe (RenderDataYZ x z)
+    -> ChartPointDict x y z
+toChartPointDict xData yData zData =
+    xData.data
+        |> List.foldl
+            (\x ( byX, byXZ ) ->
+                let
+                    xScaled : Float
+                    xScaled =
+                        Scale.convert xData.scale x
+
+                    yPoints : { points : List (DataPoint y), byY : Dict.Dict Float (List (DataPoint y)) }
+                    yPoints =
+                        toPoints x yData
+
+                    zPoints : { points : List (DataPoint z), byY : Dict.Dict Float (List (DataPoint z)) }
+                    zPoints =
+                        toPoints x zData
+
+                    yValues : List Float
+                    yValues =
+                        Dict.keys yPoints.byY
+                            |> Set.fromList
+                            |> Set.union (Set.fromList (Dict.keys zPoints.byY))
+                            |> Set.toList
+                in
+                ( ( xScaled
+                  , { x = { datum = x, value = xScaled, valueScaled = xScaled }
+                    , ys = yPoints.points
+                    , zs = zPoints.points
+                    }
+                  )
+                    :: byX
+                , yValues
+                    |> List.map
+                        (\yValue ->
+                            ( ( xScaled, yValue )
+                            , { x = { datum = x, value = xScaled, valueScaled = xScaled }
+                              , ys = Dict.get yValue yPoints.byY |> Maybe.withDefault []
+                              , zs = Dict.get yValue zPoints.byY |> Maybe.withDefault []
+                              }
+                            )
+                        )
+                    |> List.append byXZ
+                )
+            )
+            ( [], [] )
+        |> (\( byX, byXY ) ->
+                { byX = Dict.fromList byX
+                , byXY = Dict.fromList byXY
+                }
+           )
+
+
+
+-- |> Dict.fromList
+
+
+toPoints : x -> Maybe (RenderDataYZ x a) -> { points : List (DataPoint a), byY : Dict.Dict Float (List (DataPoint a)) }
+toPoints x maybeYZ =
+    maybeYZ
+        |> Maybe.map
+            (\yz ->
+                let
+                    points : List (DataPoint a)
+                    points =
+                        yz.data
+                            |> List.filterMap
+                                (\yz_ ->
+                                    yz.toValue yz_ x
+                                        |> Maybe.map
+                                            (\yzValue ->
+                                                { datum = yz_
+                                                , value = yzValue
+                                                , valueScaled = Scale.convert yz.scale yzValue
+                                                }
+                                            )
+                                )
+                in
+                { points = points
+                , byY =
+                    points
+                        |> List.foldl
+                            (\yzPoint acc ->
+                                addToList yzPoint.valueScaled yzPoint acc
+                            )
+                            Dict.empty
+                        |> Dict.map (\_ -> List.reverse)
+                }
+            )
+        |> Maybe.withDefault { points = [], byY = Dict.empty }
 
 
 
@@ -235,17 +379,25 @@ type Attribute msg
 
 
 type alias Attributes msg =
-    { width : Float
+    { debug : Bool
+    , width : Float
     , ratio : Float
-    , xAxis : AxisConfig
-    , yAxis : AxisConfig
-    , zAxis : AxisConfig
+    , xAxis : AxisAttributes
+    , yAxis : AxisAttributes
+    , zAxis : AxisAttributes
     , padding : Float
     , binPaddingOuter : Float
     , binPaddingInner : Float
     , background : String
+    , hoverFocus : Bool
+    , hoverTarget : Maybe HoverTarget
     , htmlAttributes : List (H.Attribute msg)
     }
+
+
+type HoverTarget
+    = NearestX
+    | NearestPoint
 
 
 type ScaleType
@@ -265,6 +417,19 @@ type AxisType
     | AxisZ
 
 
+type alias AxisAttributes =
+    { label : Maybe String
+    , defaultValue : Float
+    , format : Float -> String
+    , safety : Float
+    , ticks : Int
+    , scale : ScaleType
+    , stackType : StackType
+    , showAxis : Bool
+    , showGridLines : Bool
+    }
+
+
 type alias AxisConfig =
     { label : Maybe String
     , default : Float
@@ -278,7 +443,7 @@ type alias AxisConfig =
     }
 
 
-toAxis : AxisType -> Attributes msg -> AxisConfig
+toAxis : AxisType -> Attributes msg -> AxisAttributes
 toAxis axisType attrs =
     case axisType of
         AxisX ->
@@ -291,31 +456,34 @@ toAxis axisType attrs =
             attrs.zAxis
 
 
-defaultAxisConfig : AxisConfig
-defaultAxisConfig =
+defaultAxisAttributes : AxisAttributes
+defaultAxisAttributes =
     { label = Nothing
-    , default = 0.0
+    , defaultValue = 0.0
     , format = String.fromFloat
     , safety = 0.25
     , ticks = 10
     , scale = Linear
     , stackType = NoStack
     , showAxis = True
-    , showGrid = False
+    , showGridLines = True
     }
 
 
 defaultAttrs : Attributes msg
 defaultAttrs =
-    { width = 1200
+    { debug = False
+    , width = 960
     , ratio = 0.5
-    , xAxis = { defaultAxisConfig | label = Just "x", showGrid = True }
-    , yAxis = { defaultAxisConfig | label = Just "y", showGrid = True }
-    , zAxis = { defaultAxisConfig | label = Just "z" }
+    , xAxis = defaultAxisAttributes
+    , yAxis = defaultAxisAttributes
+    , zAxis = defaultAxisAttributes
     , padding = 40
     , binPaddingOuter = 0.5
     , binPaddingInner = 0.2
     , background = "transparent"
+    , hoverFocus = False
+    , hoverTarget = Just NearestX
     , htmlAttributes = []
     }
 
@@ -333,19 +501,32 @@ toStackedData :
     { spacings : Spacings
     , xData : DataAttrs x x
     , axisData : DataAttrs x a
-    , axisConfig : AxisConfig
+    , axisConfig : AxisAttributes
     }
-    ->
-        { data : List a
-        , bandData : List ( a, List ( Float, Float ) )
-        , toLabel : a -> String
-        , toColor : a -> String
-        , toValue : a -> x -> Maybe Float
-        , scale : Scale.ContinuousScale Float
-        , stack : Shape.StackResult a
-        }
+    -> RenderDataYZ x a
 toStackedData props =
     let
+        dataWithValues : List ( a, ( Float, Float ), List Float )
+        dataWithValues =
+            props.axisData.data
+                |> List.map
+                    (\a ->
+                        let
+                            values : List Float
+                            values =
+                                props.xData.data
+                                    |> List.map
+                                        (\bin ->
+                                            props.axisData.toValue a bin
+                                                |> Maybe.withDefault 0
+                                        )
+                        in
+                        ( a
+                        , bounds values
+                        , values
+                        )
+                    )
+
         stack : Shape.StackResult a
         stack =
             let
@@ -376,19 +557,7 @@ toStackedData props =
             Shape.stack
                 { offset = stackOffset
                 , order = identity
-                , data =
-                    props.axisData.data
-                        |> List.map
-                            (\a ->
-                                ( a
-                                , props.xData.data
-                                    |> List.map
-                                        (\bin ->
-                                            props.axisData.toValue a bin
-                                                |> Maybe.withDefault 0
-                                        )
-                                )
-                            )
+                , data = List.map (\( a, _, xs ) -> ( a, xs )) dataWithValues
                 }
 
         safeExtent : ( Float, Float )
@@ -416,6 +585,18 @@ toStackedData props =
     , toValue = props.axisData.toValue
     , scale = scale
     , stack = stack
+    , values =
+        List.map2
+            (\( a, domain, _ ) vs ->
+                { datum = a
+                , color = props.axisData.toColor a
+                , label = props.axisData.toLabel a
+                , domain = domain
+                , stackedValues = vs
+                }
+            )
+            dataWithValues
+            stack.values
     }
 
 
@@ -470,7 +651,7 @@ toSpacings attrs =
 toPadding : Attributes msg -> AxisType -> Float
 toPadding attrs axisType =
     let
-        axisConfig : AxisConfig
+        axisConfig : AxisAttributes
         axisConfig =
             toAxis axisType attrs
     in
@@ -494,13 +675,19 @@ toPadding attrs axisType =
 -- Helpers : Bounds
 
 
-bounds :
+bounds : List Float -> ( Float, Float )
+bounds data =
+    Statistics.extent data
+        |> Maybe.withDefault ( 0, 0 )
+
+
+boundsWithSafety :
     { safety : Float
     , toValue : a -> Float
     }
     -> List a
     -> ( Float, Float )
-bounds props data =
+boundsWithSafety props data =
     data
         |> boundsAt props.toValue
         |> Maybe.withDefault { min = 0, max = 0 }
@@ -601,3 +788,79 @@ viewTranslateChart spacings =
         { x = spacings.padding.left
         , y = spacings.padding.top
         }
+
+
+viewHtml : List (Svg.Attribute msg) -> List (Svg.Svg msg) -> SC.Svg msg
+viewHtml attrs children =
+    Svg.foreignObject attrs
+        [ H.div [ HA.attribute "xlmns" "http://www.w3.org/1999/xhtml" ] children
+        ]
+
+
+
+---
+
+
+attrAnimationDelay : Spacings -> Float -> Float -> Svg.Attribute msg
+attrAnimationDelay spacings xScaled yScaled =
+    let
+        -- This percentage based on both X and Y creates an offset
+        -- that makes points on the lower left appear sooner
+        -- than points on the upper right
+        pct : Float
+        pct =
+            (xScaled + (spacings.chart.height - yScaled))
+                / max 1 (spacings.chart.width + spacings.chart.height)
+
+        -- Controls the max offset
+        -- The faster points will have 0.0 offset and
+        -- the lowest points will be offset by this amount
+        maxDelay : Float
+        maxDelay =
+            0.3
+
+        delay : Float
+        delay =
+            maxDelay * pct
+    in
+    SA.style ("animation-delay:" ++ String.fromFloat delay ++ "s")
+
+
+attrTransformOrigin : Float -> Float -> Svg.Attribute msg
+attrTransformOrigin cx cy =
+    HA.attribute
+        "transform-origin"
+        (String.fromFloat cx ++ " " ++ String.fromFloat cy)
+
+
+
+---
+
+
+isJust : Maybe a -> Bool
+isJust m =
+    m /= Nothing
+
+
+maybeFilter : (a -> Bool) -> Maybe a -> Maybe a
+maybeFilter predicate =
+    Maybe.andThen
+        (\a ->
+            if predicate a then
+                Just a
+
+            else
+                Nothing
+        )
+
+
+addToList : comparable -> v -> Dict.Dict comparable (List v) -> Dict.Dict comparable (List v)
+addToList k v =
+    Dict.update
+        k
+        (\maybeList ->
+            maybeList
+                |> Maybe.map (\vs -> v :: vs)
+                |> Maybe.withDefault [ v ]
+                |> Just
+        )

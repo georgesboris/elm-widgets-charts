@@ -59,7 +59,7 @@ toExtent ( low, high ) =
             { weight = Low
             , low = low
             , high = high
-            , delta = high - low
+            , delta = abs (high - low)
             }
 
     else if low < 0 then
@@ -73,7 +73,7 @@ toExtent ( low, high ) =
         { weight = High
         , low = 0.0
         , high = high
-        , delta = high
+        , delta = abs high
         }
 
 
@@ -92,8 +92,8 @@ toRatio a b =
         delta =
             high - low
     in
-    { high = high / delta
-    , low = low / delta
+    { high = safeDivide high delta
+    , low = safeDivide low delta
     }
 
 
@@ -102,10 +102,24 @@ toNormalizedExtent extent ratio =
     case extent.weight of
         Low ->
             ( extent.low
-            , (extent.low * ratio.high) / ratio.low
+            , safeDivide (extent.low * ratio.high) ratio.low
             )
 
         High ->
-            ( (extent.high * ratio.low) / ratio.high
+            ( safeDivide (extent.high * ratio.low) ratio.high
             , extent.high
             )
+
+
+safeDivide : Float -> Float -> Float
+safeDivide x y =
+    let
+        result : Float
+        result =
+            x / y
+    in
+    if isNaN result then
+        0.0
+
+    else
+        result

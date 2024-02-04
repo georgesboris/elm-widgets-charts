@@ -15,6 +15,8 @@
         "elm-community/typed-svg": "7.0.0 <= v < 8.0.0",
         "folkertdev/one-true-path-experiment": "6.0.0 <= v < 7.0.0",
         "gampleman/elm-visualization": "2.3.0 <= v < 3.0.0",
+        "ianmackenzie/elm-geometry": "3.11.0 <= v < 4.0.0",
+        "ianmackenzie/elm-units": "2.10.0 <= v < 3.0.0",
         "uncover-co/elm-theme": "2.0.0 <= v < 3.0.0",
         "uncover-co/elm-widgets": "2.22.0 <= v < 3.0.0"
     },

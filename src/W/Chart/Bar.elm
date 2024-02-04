@@ -6,31 +6,23 @@ import Svg.Attributes
 import TypedSvg as S
 import TypedSvg.Attributes.InPx as SAP
 import TypedSvg.Core as SC
+import W.Chart.ChartElement
 import W.Chart.Internal
 
 
-yBars : W.Chart.Internal.Element msg x y z { with | yData : () }
+yBars : W.Chart.Internal.ChartElement msg x y z { datasets | yData : () }
 yBars =
-    W.Chart.Internal.Element
-        { foreground = Nothing
-        , main = Just (viewBars .y (.attrs >> .yAxis))
-        }
+    W.Chart.ChartElement.fromY (viewBars .y (.attrs >> .yAxis))
 
 
-zBars : W.Chart.Internal.Element msg x y z { with | zData : () }
+zBars : W.Chart.Internal.ChartElement msg x y z { datasets | zData : () }
 zBars =
-    W.Chart.Internal.Element
-        { foreground = Nothing
-        , main = Just (viewBars .z (.attrs >> .zAxis))
-        }
+    W.Chart.ChartElement.fromZ (viewBars .z (.attrs >> .zAxis))
 
 
-yzBars : W.Chart.Internal.Element msg x y z { with | yData : (), zData : () }
+yzBars : W.Chart.Internal.ChartElement msg x y z { datasets | yData : (), zData : () }
 yzBars =
-    W.Chart.Internal.Element
-        { foreground = Nothing
-        , main = Just viewMixedBars
-        }
+    W.Chart.ChartElement.fromYZ viewMixedBars
 
 
 
@@ -39,7 +31,7 @@ yzBars =
 
 viewBars :
     (W.Chart.Internal.RenderDataFull msg x y z -> Maybe (W.Chart.Internal.RenderDataYZ x a))
-    -> (W.Chart.Internal.RenderDataFull msg x y z -> W.Chart.Internal.AxisConfig)
+    -> (W.Chart.Internal.RenderDataFull msg x y z -> W.Chart.Internal.AxisAttributes)
     -> W.Chart.Internal.RenderData msg x y z constraints
     -> SC.Svg msg
 viewBars toYZData toYZConfig (W.Chart.Internal.RenderData d) =
@@ -109,7 +101,7 @@ viewMixedBars (W.Chart.Internal.RenderData d) =
 viewBarsWithOptions :
     { renderData : W.Chart.Internal.RenderDataFull msg x y z
     , yzData : W.Chart.Internal.RenderDataYZ x a
-    , yzConfig : W.Chart.Internal.AxisConfig
+    , yzConfig : W.Chart.Internal.AxisAttributes
     , binsCount : Int
     , binsOffset : Int
     }
@@ -120,7 +112,7 @@ viewBarsWithOptions props =
         binScale =
             Scale.band
                 { paddingInner = props.renderData.attrs.binPaddingInner
-                , paddingOuter = 0.0
+                , paddingOuter = props.renderData.attrs.binPaddingOuter
                 , align = 0.5
                 }
                 ( 0, Scale.bandwidth props.renderData.x.bandScale )

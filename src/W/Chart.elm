@@ -1,15 +1,25 @@
 module W.Chart exposing
-    ( Config
-    , config
+    ( config, width, ratio, padding, background, noTooltip, tooltipByNearest, binPaddingInner, binPaddingOuter, htmlAttrs, ChartAttribute, Config
+    , view, ChartElement
+    , withYData, withYDataset, withZData, withZDataset
+    , axisLabel, defaultValue, format, logarithmic, noAxisLine, noGridLines, safety, stacked, stackedRelative, ticks, AxisAttribute
     , globalStyles
-    , view
-    , withYData
-    , withYDataset
-    , withZData
-    , withZDataset
+    , debug
     )
 
+{-|
+
+@docs config, width, ratio, padding, background, noTooltip, tooltipByNearest, binPaddingInner, binPaddingOuter, htmlAttrs, ChartAttribute, Config
+@docs view, ChartElement
+@docs withYData, withYDataset, withZData, withZDataset
+@docs axisLabel, defaultValue, format, logarithmic, noAxisLine, noGridLines, safety, stacked, stackedRelative, ticks, AxisAttribute
+@docs globalStyles
+
+-}
+
+import Attr
 import Axis
+import Dict
 import Html as H
 import Html.Attributes as HA
 import Scale
@@ -22,10 +32,28 @@ import TypedSvg.Attributes.InPx as SAP
 import TypedSvg.Core as SC
 import TypedSvg.Types as ST
 import W.Chart.Internal exposing (RenderData(..))
+import W.Chart.Internal.Voronoi
+import W.Chart.Tooltip
 
 
-type alias Config msg x y z constraints =
-    W.Chart.Internal.Config msg x y z constraints
+{-| -}
+type alias Config msg x y z datasets =
+    W.Chart.Internal.Config msg x y z datasets
+
+
+{-| -}
+type alias ChartElement msg x y z datasets =
+    W.Chart.Internal.ChartElement msg x y z datasets
+
+
+{-| -}
+type alias ChartAttribute msg =
+    Attr.Attr (W.Chart.Internal.Attributes msg)
+
+
+{-| -}
+type alias AxisAttribute =
+    Attr.Attr W.Chart.Internal.AxisAttributes
 
 
 
@@ -37,149 +65,304 @@ lineStrokeWidth =
     2
 
 
-xAxisPadding : Float
-xAxisPadding =
-    22
-
-
-yAxisPadding : Float
-yAxisPadding =
-    62
-
-
 labelFontSize : Float
 labelFontSize =
     13
 
 
 
--- Datasets
+-- Config
 
 
 config :
-    List option
+    List (ChartAttribute msg)
     ->
         { data : List x
         , toLabel : x -> String
         }
     -> W.Chart.Internal.Config msg x y z {}
-config opts axisData =
-    W.Chart.Internal.Config
-        { attrs = []
-        , yData = Nothing
-        , zData = Nothing
-        , xData =
-            { data = axisData.data
-            , toLabel = axisData.toLabel
-            , toColor = \_ -> ""
-            , toValue = \_ _ -> Nothing
-            }
-        }
+config =
+    Attr.withAttrs W.Chart.Internal.defaultAttrs
+        (\attrs axisData ->
+            W.Chart.Internal.Config
+                { attrs = attrs
+                , yData = Nothing
+                , zData = Nothing
+                , xData =
+                    { data = axisData.data
+                    , toLabel = axisData.toLabel
+                    , toColor = \_ -> ""
+                    , toValue = \_ _ -> Nothing
+                    }
+                }
+        )
+
+
+
+-- Config : Attributes
+
+
+width : Int -> ChartAttribute msg
+width v =
+    Attr.attr (\a -> { a | width = toFloat v })
+
+
+ratio : Float -> ChartAttribute msg
+ratio v =
+    Attr.attr (\a -> { a | ratio = v })
+
+
+padding : Int -> ChartAttribute msg
+padding v =
+    Attr.attr (\a -> { a | padding = toFloat v })
+
+
+binPaddingOuter : Int -> ChartAttribute msg
+binPaddingOuter v =
+    Attr.attr (\a -> { a | binPaddingOuter = toFloat v })
+
+
+binPaddingInner : Int -> ChartAttribute msg
+binPaddingInner v =
+    Attr.attr (\a -> { a | binPaddingInner = toFloat v })
+
+
+background : String -> ChartAttribute msg
+background v =
+    Attr.attr (\a -> { a | background = v })
+
+
+noTooltip : ChartAttribute msg
+noTooltip =
+    Attr.attr (\a -> { a | hoverTarget = Nothing })
+
+
+tooltipByNearest : ChartAttribute msg
+tooltipByNearest =
+    Attr.attr (\a -> { a | hoverTarget = Just W.Chart.Internal.NearestPoint })
+
+
+htmlAttrs : List (H.Attribute msg) -> ChartAttribute msg
+htmlAttrs v =
+    Attr.attr (\a -> { a | htmlAttributes = v })
+
+
+debug : ChartAttribute msg
+debug =
+    Attr.attr (\a -> { a | debug = True })
+
+
+
+-- Datasets
 
 
 withYData :
-    List option
+    List AxisAttribute
     ->
         { label : String
         , color : String
         , toValue : x -> Maybe Float
         }
-    -> Config msg x any z constraints
-    -> Config msg x () z { with | yData : () }
-withYData opts axisData (W.Chart.Internal.Config cfg) =
-    W.Chart.Internal.Config
-        { attrs = cfg.attrs
-        , xData = cfg.xData
-        , zData = cfg.zData
-        , yData =
-            Just
-                { data = [ () ]
-                , toLabel = \_ -> axisData.label
-                , toColor = \_ -> axisData.color
-                , toValue = \_ -> axisData.toValue
+    -> Config msg x any z datasets
+    -> Config msg x () z { datasets | yData : () }
+withYData =
+    Attr.withAttrs W.Chart.Internal.defaultAxisAttributes
+        (\axisAttrs axisData (W.Chart.Internal.Config cfg) ->
+            let
+                attrs : W.Chart.Internal.Attributes msg
+                attrs =
+                    cfg.attrs
+            in
+            W.Chart.Internal.Config
+                { attrs = { attrs | yAxis = axisAttrs }
+                , xData = cfg.xData
+                , zData = cfg.zData
+                , yData =
+                    Just
+                        { data = [ () ]
+                        , toLabel = \_ -> axisData.label
+                        , toColor = \_ -> axisData.color
+                        , toValue = \_ -> axisData.toValue
+                        }
                 }
-        }
+        )
 
 
 withYDataset :
-    List option
+    List AxisAttribute
     ->
         { data : List y
         , toLabel : y -> String
         , toColor : y -> String
         , toValue : y -> x -> Maybe Float
         }
-    -> Config msg x any z constraints
-    -> Config msg x y z { with | yData : () }
-withYDataset opts axisData (W.Chart.Internal.Config cfg) =
-    W.Chart.Internal.Config
-        { attrs = cfg.attrs
-        , xData = cfg.xData
-        , zData = cfg.zData
-        , yData = Just axisData
-        }
+    -> Config msg x any z datasets
+    -> Config msg x y z { datasets | yData : () }
+withYDataset =
+    Attr.withAttrs W.Chart.Internal.defaultAxisAttributes
+        (\axisAttrs axisData (W.Chart.Internal.Config cfg) ->
+            let
+                attrs : W.Chart.Internal.Attributes msg
+                attrs =
+                    cfg.attrs
+            in
+            W.Chart.Internal.Config
+                { attrs = { attrs | yAxis = axisAttrs }
+                , xData = cfg.xData
+                , zData = cfg.zData
+                , yData = Just axisData
+                }
+        )
 
 
 withZData :
-    List option
+    List AxisAttribute
     ->
         { label : String
         , color : String
         , toValue : x -> Maybe Float
         }
-    -> Config msg x y any constraints
-    -> Config msg x y () { with | zData : () }
-withZData opts axisData (W.Chart.Internal.Config cfg) =
-    W.Chart.Internal.Config
-        { attrs = cfg.attrs
-        , xData = cfg.xData
-        , yData = cfg.yData
-        , zData =
-            Just
-                { data = [ () ]
-                , toLabel = \_ -> axisData.label
-                , toColor = \_ -> axisData.color
-                , toValue = \_ -> axisData.toValue
+    -> Config msg x y any datasets
+    -> Config msg x y () { datasets | zData : () }
+withZData =
+    Attr.withAttrs W.Chart.Internal.defaultAxisAttributes
+        (\axisAttrs axisData (W.Chart.Internal.Config cfg) ->
+            let
+                attrs : W.Chart.Internal.Attributes msg
+                attrs =
+                    cfg.attrs
+            in
+            W.Chart.Internal.Config
+                { attrs = { attrs | zAxis = axisAttrs }
+                , xData = cfg.xData
+                , yData = cfg.yData
+                , zData =
+                    Just
+                        { data = [ () ]
+                        , toLabel = \_ -> axisData.label
+                        , toColor = \_ -> axisData.color
+                        , toValue = \_ -> axisData.toValue
+                        }
                 }
-        }
+        )
 
 
 withZDataset :
-    List option
+    List AxisAttribute
     ->
         { data : List z
         , toLabel : z -> String
         , toColor : z -> String
         , toValue : z -> x -> Maybe Float
         }
-    -> Config msg x y any constraints
-    -> Config msg x y z { with | zData : () }
-withZDataset opts axisData (W.Chart.Internal.Config cfg) =
-    W.Chart.Internal.Config
-        { attrs = cfg.attrs
-        , xData = cfg.xData
-        , yData = cfg.yData
-        , zData = Just axisData
-        }
+    -> Config msg x y any datasets
+    -> Config msg x y z { datasets | zData : () }
+withZDataset =
+    Attr.withAttrs W.Chart.Internal.defaultAxisAttributes
+        (\axisAttrs axisData (W.Chart.Internal.Config cfg) ->
+            let
+                attrs : W.Chart.Internal.Attributes msg
+                attrs =
+                    cfg.attrs
+            in
+            W.Chart.Internal.Config
+                { attrs = { attrs | zAxis = axisAttrs }
+                , xData = cfg.xData
+                , yData = cfg.yData
+                , zData = Just axisData
+                }
+        )
 
 
 
--- VerticalScales
--- Bounds
---  View
+-- Axis Attributes
 
 
-view : List (W.Chart.Internal.Element msg x y z constraints) -> Config msg x y z constraints -> H.Html msg
-view elements cfg =
+{-| -}
+axisLabel : String -> AxisAttribute
+axisLabel v =
+    Attr.attr (\attrs -> { attrs | label = Just v })
+
+
+{-| -}
+defaultValue : Float -> AxisAttribute
+defaultValue v =
+    Attr.attr (\attrs -> { attrs | defaultValue = v })
+
+
+{-| -}
+format : (Float -> String) -> AxisAttribute
+format v =
+    Attr.attr (\attrs -> { attrs | format = v })
+
+
+{-| -}
+safety : Float -> AxisAttribute
+safety v =
+    Attr.attr (\attrs -> { attrs | safety = v })
+
+
+{-| -}
+ticks : Int -> AxisAttribute
+ticks v =
+    Attr.attr (\attrs -> { attrs | ticks = v })
+
+
+{-| -}
+stacked : AxisAttribute
+stacked =
+    Attr.attr (\attrs -> { attrs | stackType = W.Chart.Internal.AbsoluteStack })
+
+
+{-| -}
+stackedRelative : AxisAttribute
+stackedRelative =
+    Attr.attr (\attrs -> { attrs | stackType = W.Chart.Internal.RelativeStack })
+
+
+{-| -}
+logarithmic : Float -> AxisAttribute
+logarithmic basis =
+    Attr.attr (\attrs -> { attrs | scale = W.Chart.Internal.Logarithmic basis })
+
+
+{-| -}
+noAxisLine : AxisAttribute
+noAxisLine =
+    Attr.attr (\attrs -> { attrs | showAxis = False })
+
+
+{-| -}
+noGridLines : AxisAttribute
+noGridLines =
+    Attr.attr (\attrs -> { attrs | showGridLines = False })
+
+
+
+-- View
+
+
+view : List (W.Chart.Internal.ChartElement msg x y z datasets) -> Config msg x y z datasets -> H.Html msg
+view widgets cfg =
     let
-        renderData : RenderData msg x y z constraints
+        renderData : RenderData msg x y z datasets
         renderData =
             W.Chart.Internal.toRenderData cfg
+
+        (W.Chart.Internal.RenderData d) =
+            renderData
     in
     H.div
-        [ HA.class "ew-charts" ]
+        [ HA.class "ew-charts"
+        , HA.classList
+            [ ( "m--unfocus", d.attrs.hoverFocus && d.attrs.hoverTarget /= Nothing )
+            , ( "m--debug", d.attrs.debug )
+            ]
+        ]
         [ Svg.svg
-            [ viewBox renderData ]
+            [ SA.viewBox 0 0 d.spacings.canvas.width d.spacings.canvas.height
+            , SA.class [ "ew-charts--svg" ]
+            ]
             [ -- Grid
               viewYGrid renderData
             , viewXGrid renderData
@@ -193,29 +376,154 @@ view elements cfg =
             , viewZAxis renderData
 
             -- Elements
-            , viewElements .main renderData elements
-            , viewElements .foreground renderData elements
+            , viewChartElements "bg" .background renderData widgets
+            , viewChartElements "main" .main renderData widgets
+            , viewChartElements "fg" .foreground renderData widgets
+
+            -- Hover
+            , viewHover renderData widgets
             ]
         ]
 
 
-viewBox : RenderData msg x y z constraints -> Svg.Attribute msg
-viewBox (RenderData d) =
-    SA.viewBox 0 0 d.spacings.canvas.width d.spacings.canvas.height
+
+-- Static Elements
 
 
-
--- Elements
-
-
-viewElements :
-    (W.Chart.Internal.ElementData msg x y z constraints -> Maybe (RenderData msg x y z constraints -> Svg.Svg msg))
-    -> RenderData msg x y z constraints
-    -> List (W.Chart.Internal.Element msg x y z constraints)
+viewChartElements :
+    String
+    -> (W.Chart.Internal.ChartElementData msg x y z datasets -> Maybe (RenderData msg x y z datasets -> Svg.Svg msg))
+    -> RenderData msg x y z datasets
+    -> List (W.Chart.Internal.ChartElement msg x y z datasets)
     -> SC.Svg msg
-viewElements fn renderData elements =
-    elements
-        |> List.filterMap (\(W.Chart.Internal.Element el) -> Maybe.map (\el_ -> el_ renderData) (fn el))
+viewChartElements class getter renderData widgets =
+    widgets
+        |> List.filterMap (\(W.Chart.Internal.ChartElement w) -> Maybe.map (\el_ -> el_ renderData) (getter w))
+        |> S.g [ SA.class [ "ew-charts-" ++ class ] ]
+
+
+
+-- Hover Elements
+
+
+viewHover :
+    RenderData msg x y z datasets
+    -> List (W.Chart.Internal.ChartElement msg x y z datasets)
+    -> SC.Svg msg
+viewHover (RenderData d) widgets =
+    case d.attrs.hoverTarget of
+        Just W.Chart.Internal.NearestX ->
+            viewHoverX d widgets
+
+        Just W.Chart.Internal.NearestPoint ->
+            viewHoverNearest d widgets
+
+        Nothing ->
+            H.text ""
+
+
+viewHoverX :
+    W.Chart.Internal.RenderDataFull msg x y z
+    -> List (W.Chart.Internal.ChartElement msg x y z datasets)
+    -> SC.Svg msg
+viewHoverX d widgets =
+    let
+        bandwidth : Float
+        bandwidth =
+            Scale.bandwidth d.x.bandScale
+
+        tooltipMargin : Float
+        tooltipMargin =
+            bandwidth * 0.5
+    in
+    d.points.byX
+        |> Dict.values
+        |> List.concatMap
+            (\xData ->
+                [ S.rect
+                    [ SAP.x (Scale.convert d.x.bandScale xData.x.datum)
+                    , SAP.y 0
+                    , SAP.width bandwidth
+                    , SAP.height d.spacings.chart.height
+                    , SA.class [ "ew-charts--hover-target" ]
+                    , Svg.Attributes.fill "transparent"
+                    ]
+                    []
+                , S.g
+                    [ SA.class [ "ew-charts--hover" ] ]
+                    [ viewHoverData d widgets xData
+                    , W.Chart.Tooltip.view d
+                        xData.x.valueScaled
+                        0.0
+                        tooltipMargin
+                        [ W.Chart.Tooltip.viewPoints d xData ]
+                    ]
+                ]
+            )
+        |> W.Chart.Internal.viewTranslateChart d.spacings
+
+
+viewHoverNearest :
+    W.Chart.Internal.RenderDataFull msg x y z
+    -> List (W.Chart.Internal.ChartElement msg x y z datasets)
+    -> SC.Svg msg
+viewHoverNearest d widgets =
+    W.Chart.Internal.Voronoi.view
+        (\( x, y ) hoverData ->
+            S.g []
+                [ viewHoverData d widgets hoverData
+                , W.Chart.Tooltip.view d
+                    x
+                    y
+                    8.0
+                    [ W.Chart.Tooltip.viewPoints d hoverData ]
+                ]
+        )
+        d
+
+
+viewHoverData :
+    W.Chart.Internal.RenderDataFull msg x y z
+    -> List (W.Chart.Internal.ChartElement msg x y z datasets)
+    -> W.Chart.Internal.ChartPoint x y z
+    -> SC.Svg msg
+viewHoverData d widgets point =
+    widgets
+        |> List.filterMap
+            (\(W.Chart.Internal.ChartElement w) ->
+                w.hover
+                    |> Maybe.andThen
+                        (\hover ->
+                            case hover of
+                                W.Chart.Internal.HoverX fn ->
+                                    fn d point.x
+                                        |> List.singleton
+                                        |> Just
+
+                                W.Chart.Internal.HoverY fn ->
+                                    Maybe.map
+                                        (\yData ->
+                                            List.map (fn d yData point.x) point.ys
+                                        )
+                                        d.y
+
+                                W.Chart.Internal.HoverZ fn ->
+                                    Maybe.map
+                                        (\zData ->
+                                            List.map (fn d zData point.x) point.zs
+                                        )
+                                        d.z
+
+                                W.Chart.Internal.HoverYZ fn ->
+                                    Maybe.map2
+                                        (\yData zData ->
+                                            List.map2 (fn d yData zData point.x) point.ys point.zs
+                                        )
+                                        d.y
+                                        d.z
+                        )
+            )
+        |> List.concat
         |> S.g []
 
 
@@ -223,11 +531,12 @@ viewElements fn renderData elements =
 -- Labels
 
 
-viewLabels : RenderData msg x y z constraints -> SC.Svg msg
+viewLabels : RenderData msg x y z datasets -> SC.Svg msg
 viewLabels (RenderData d) =
     S.g
         []
         [ d.attrs.yAxis.label
+            |> W.Chart.Internal.maybeFilter (\_ -> W.Chart.Internal.isJust d.y)
             |> Maybe.map
                 (\label ->
                     W.Chart.Internal.viewTranslate
@@ -247,6 +556,7 @@ viewLabels (RenderData d) =
                 )
             |> Maybe.withDefault (H.text "")
         , d.attrs.zAxis.label
+            |> W.Chart.Internal.maybeFilter (\_ -> W.Chart.Internal.isJust d.z)
             |> Maybe.map
                 (\label ->
                     W.Chart.Internal.viewTranslate
@@ -290,9 +600,9 @@ viewLabels (RenderData d) =
 --  Axes & Lines
 
 
-viewYGrid : RenderData msg x y z constraints -> SC.Svg msg
+viewYGrid : RenderData msg x y z datasets -> SC.Svg msg
 viewYGrid (RenderData d) =
-    case ( d.attrs.yAxis.showGrid, d.y ) of
+    case ( d.attrs.yAxis.showGridLines, d.y ) of
         ( True, Just yData ) ->
             Scale.ticks yData.scale d.attrs.yAxis.ticks
                 |> List.map
@@ -318,9 +628,9 @@ viewYGrid (RenderData d) =
             H.text ""
 
 
-viewXGrid : RenderData msg x y z constraints -> SC.Svg msg
+viewXGrid : RenderData msg x y z datasets -> SC.Svg msg
 viewXGrid (RenderData d) =
-    case ( d.attrs.yAxis.showGrid, d.y ) of
+    case ( d.attrs.yAxis.showGridLines, d.y ) of
         ( True, Just yData ) ->
             Scale.ticks d.x.scale d.attrs.xAxis.ticks
                 |> List.map
@@ -346,7 +656,7 @@ viewXGrid (RenderData d) =
             H.text ""
 
 
-viewXAxis : RenderData msg x y z constraints -> SC.Svg msg
+viewXAxis : RenderData msg x y z datasets -> SC.Svg msg
 viewXAxis (RenderData d) =
     if d.attrs.xAxis.showAxis then
         W.Chart.Internal.viewTranslate
@@ -370,7 +680,7 @@ viewXAxis (RenderData d) =
         H.text ""
 
 
-viewYAxis : RenderData msg x y z constraints -> SC.Svg msg
+viewYAxis : RenderData msg x y z datasets -> SC.Svg msg
 viewYAxis (RenderData d) =
     case ( d.attrs.yAxis.showAxis, d.y ) of
         ( True, Just yData ) ->
@@ -393,7 +703,7 @@ viewYAxis (RenderData d) =
             H.text ""
 
 
-viewZAxis : RenderData msg x y z constraints -> SC.Svg msg
+viewZAxis : RenderData msg x y z datasets -> SC.Svg msg
 viewZAxis (RenderData d) =
     case ( d.attrs.zAxis.showAxis, d.z ) of
         ( True, Just zData ) ->
@@ -480,7 +790,6 @@ viewVLine props =
 
 
 
--- Spacings
 -- Styles
 
 
@@ -489,6 +798,85 @@ globalStyles =
     H.node "style"
         []
         [ H.text ("""
+            .ew-charts--svg,
+            .ew-charts--tooltip-wrapper {
+                overflow: visible;
+            }
+
+            .ew-charts.m--unfocus:hover .ew-charts-main {
+                filter: grayscale(100%);
+            }
+
+            .ew-charts--hover {
+                display: none;
+                pointer-events: none;
+            }
+            .ew-charts--hover-target:hover + .ew-charts--hover {
+                display: block;
+            }
+
+
+            .ew-charts.m--debug .ew-charts--hover-target {
+                fill: rgba(255, 0, 0, 0.05);
+                stroke: rgba(255, 0, 0, 0.1);
+            }
+            .ew-charts.m--debug .ew-charts--hover-target:hover {
+                fill: rgba(255, 0, 0, 0.05);
+                stroke: rgba(255, 0, 0, 0.5);
+            }
+
+            .ew-charts--tooltip {
+                display: flex;
+                align-items: flex-end;
+                justify-content: flex-start;
+                box-sizing: border-box;
+                font-family: var(--theme-font-text), sans-serif;
+                font-size: 12px;
+            }
+            .ew-charts--tooltip.m--align-left {
+                justify-content: flex-end;
+            }
+            .ew-charts--tooltip.m--align-top {
+                align-items: flex-start;
+            }
+
+            .ew-charts--tooltip-x,
+            .ew-charts--tooltip-yz--label,
+            .ew-charts--tooltip-yz--list,
+            .ew-charts--tooltip-yz--item {
+                margin: 0;
+                padding: 0;
+            }
+
+            .ew-charts--tooltip-x,
+            .ew-charts--tooltip-yz {
+                padding: 4px;
+            }
+
+            .ew-charts--tooltip-x,
+            .ew-charts--tooltip-yz--label {
+                font-size: inherit;
+            }
+
+            .ew-charts--tooltip-yz--list {
+                list-style-type: none;
+            }
+
+            .ew-charts--tooltip-yz {
+                border-top: 1px solid """ ++ Theme.baseAuxWithAlpha 0.3 ++ """;
+            }
+            .ew-charts--tooltip-yz--label {
+                padding-bottom: 4px;
+            }
+
+            .ew-charts--tooltip-yz--item {
+                display: flex;
+                justify-content: space-between;
+                gap: 8px;
+            }
+            .ew-charts--tooltip-yz--item-label {}
+            .ew-charts--tooltip-yz--item-value {}
+
             .ew-charts .tick text {
                 fill: """ ++ Theme.baseAux ++ """;
                 font-family: var(--theme-font-text), sans-serif;
@@ -503,6 +891,21 @@ globalStyles =
                 stroke: """ ++ Theme.baseAux ++ """;
             }
 
+            .ew-charts--animate-scale {
+                transform: scale(0);
+                animation: ew-charts--scale 0.2s ease-out forwards;
+            }
+
+            @keyframes ew-charts--scale {
+                from {
+                    transform: scale(0);
+                }
+                to {
+                    transform: scale(1);
+                }
+            }
+
+            /*
             .ew-charts--y-axis path.domain,
             .ew-charts--y-axis .tick line {
                 display: none;
@@ -526,22 +929,15 @@ globalStyles =
             }
 
             .ew-charts--hover-rect {
-                fill: """ ++ Theme.baseAuxWithAlpha 0.05 ++ """;
+                fill: """ ++ Theme.baseAuxWithAlpha 0.03 ++ """;
             }
             .ew-charts--hover-rect.m--use-bars:hover,
             .ew-charts--hover-rect:hover + g .ew-charts--hover-line,
             .ew-charts--hover-rect:hover + g .ew-charts--hover-circle,
-            .ew-charts--hover-rect:hover + g + .ew-charts--tooltip {
+            .ew-charts--hover-rect:hover + g + .ew-charts--tooltip,
+            .ew-charts--tooltip-trigger:hover + .ew-charts--tooltip {
                 opacity: 1;
             }
-
-            .ew-charts--hover-content {
-                pointer-events: none;
-                opacity: 0;
-                transition: 400;
-            }
-            .ew-charts--hover-target:hover + .ew-charts--hover-content {
-                opacity: 1;
-            }
+            */
             """)
         ]

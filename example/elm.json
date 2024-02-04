@@ -7,6 +7,7 @@
     "elm-version": "0.19.1",
     "dependencies": {
         "direct": {
+            "avh4/elm-color": "1.0.0",
             "elm/browser": "1.0.2",
             "elm/core": "1.0.5",
             "elm/html": "1.0.0",
@@ -14,11 +15,12 @@
             "elm-community/typed-svg": "7.0.0",
             "folkertdev/one-true-path-experiment": "6.0.0",
             "gampleman/elm-visualization": "2.4.0",
+            "ianmackenzie/elm-geometry": "3.11.0",
+            "ianmackenzie/elm-units": "2.10.0",
             "uncover-co/elm-theme": "2.0.0",
             "uncover-co/elm-widgets": "2.22.0"
         },
         "indirect": {
-            "avh4/elm-color": "1.0.0",
             "elm/json": "1.1.3",
             "elm/parser": "1.1.0",
             "elm/random": "1.0.0",
@@ -31,10 +33,8 @@
             "gampleman/elm-rosetree": "1.1.0",
             "ianmackenzie/elm-1d-parameter": "1.0.1",
             "ianmackenzie/elm-float-extra": "1.1.0",
-            "ianmackenzie/elm-geometry": "3.11.0",
             "ianmackenzie/elm-interval": "3.1.0",
             "ianmackenzie/elm-triangular-mesh": "1.1.0",
-            "ianmackenzie/elm-units": "2.10.0",
             "ianmackenzie/elm-units-interval": "3.2.0",
             "ianmackenzie/elm-units-prefixed": "2.8.0",
             "justinmimbs/date": "4.0.1",

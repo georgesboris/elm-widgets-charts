@@ -106,7 +106,7 @@ withHoverY :
     (W.Chart.Internal.RenderDataFull msg x y z
      -> W.Chart.Internal.RenderDataYZ x y
      -> DataPoint x
-     -> DataPoint y
+     -> List (DataPoint y)
      -> Svg.Svg msg
     )
     -> ChartElement msg x y z { with | yData : () }
@@ -119,7 +119,7 @@ withHoverZ :
     (W.Chart.Internal.RenderDataFull msg x y z
      -> W.Chart.Internal.RenderDataYZ x z
      -> DataPoint x
-     -> DataPoint z
+     -> List (DataPoint z)
      -> Svg.Svg msg
     )
     -> ChartElement msg x y z { with | zData : () }

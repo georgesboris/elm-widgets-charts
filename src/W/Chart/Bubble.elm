@@ -296,13 +296,19 @@ toBubbleData props =
                                             (\yValue ->
                                                 { x =
                                                     { datum = x
+                                                    , missing = False
                                                     , value = xScaled
                                                     , valueScaled = xScaled
+                                                    , stackedStart = 0
+                                                    , stackedEnd = 0
                                                     }
                                                 , yz =
                                                     { datum = y
+                                                    , missing = False
                                                     , value = yValue
                                                     , valueScaled = Scale.convert props.yzData.scale yValue
+                                                    , stackedStart = 0
+                                                    , stackedEnd = 0
                                                     }
                                                 , radius = props.toRadius x ( y, yValue )
                                                 }

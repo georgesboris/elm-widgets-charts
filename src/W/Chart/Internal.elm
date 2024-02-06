@@ -37,7 +37,7 @@ module W.Chart.Internal exposing
     )
 
 import Axis
-import Dict
+import Dict exposing (values)
 import Html as H
 import Html.Attributes as HA
 import Scale
@@ -69,8 +69,8 @@ type alias ChartElementData msg x y z datasets =
 
 type ChartElementHover msg x y z datasets
     = HoverX (RenderDataFull msg x y z -> DataPoint x -> Svg.Svg msg)
-    | HoverY (RenderDataFull msg x y z -> RenderDataYZ x y -> DataPoint x -> DataPoint y -> Svg.Svg msg)
-    | HoverZ (RenderDataFull msg x y z -> RenderDataYZ x z -> DataPoint x -> DataPoint z -> Svg.Svg msg)
+    | HoverY (RenderDataFull msg x y z -> RenderDataYZ x y -> DataPoint x -> List (DataPoint y) -> Svg.Svg msg)
+    | HoverZ (RenderDataFull msg x y z -> RenderDataYZ x z -> DataPoint x -> List (DataPoint z) -> Svg.Svg msg)
     | HoverYZ (RenderDataFull msg x y z -> RenderDataYZ x y -> RenderDataYZ x z -> ChartPoint x y z -> Svg.Svg msg)
 
 
@@ -138,8 +138,11 @@ type alias ChartPoint x y z =
 
 type alias DataPoint a =
     { datum : a
+    , missing : Bool
     , value : Float
     , valueScaled : Float
+    , stackedStart : Float
+    , stackedEnd : Float
     }
 
 
@@ -167,6 +170,7 @@ type alias RenderDataYZ x a =
             , color : String
             , label : String
             , domain : ( Float, Float )
+            , values : List ( a, Float, ( Float, Float ) )
             , stackedValues : List ( Float, Float )
             }
     }
@@ -257,22 +261,70 @@ toChartPointDict :
     -> Maybe (RenderDataYZ x y)
     -> Maybe (RenderDataYZ x z)
     -> ChartPointDict x y z
-toChartPointDict xData yData zData =
-    xData.data
+toChartPointDict xData maybeYData maybeZData =
+    let
+        pointsBase : List ( x, List ( y, Float, ( Float, Float ) ), List ( z, Float, ( Float, Float ) ) )
+        pointsBase =
+            case ( maybeYData, maybeZData ) of
+                ( Just yData, Just zData ) ->
+                    List.map3
+                        (\x yForX zForX ->
+                            ( x, yForX, zForX )
+                        )
+                        xData.data
+                        (yData.values
+                            |> List.map .values
+                            |> transpose
+                        )
+                        (zData.values
+                            |> List.map .values
+                            |> transpose
+                        )
+
+                ( Just yData, Nothing ) ->
+                    List.map2
+                        (\x yForX ->
+                            ( x, yForX, [] )
+                        )
+                        xData.data
+                        (yData.values
+                            |> List.map .values
+                            |> transpose
+                        )
+
+                ( Nothing, Just zData ) ->
+                    List.map2
+                        (\x zForX ->
+                            ( x, [], zForX )
+                        )
+                        xData.data
+                        (zData.values
+                            |> List.map .values
+                            |> transpose
+                        )
+
+                ( Nothing, Nothing ) ->
+                    List.map (\x -> ( x, [], [] )) xData.data
+    in
+    pointsBase
         |> List.foldl
-            (\x ( byX, byXZ ) ->
+            (\( x, ys, zs ) ( byX, byXZ ) ->
                 let
                     xScaled : Float
                     xScaled =
                         Scale.convert xData.scale x
 
+                    xBin : Float
+                    xBin =
+                        Scale.convert xData.bandScale x
+
                     yPoints : { points : List (DataPoint y), byY : Dict.Dict Float (List (DataPoint y)) }
                     yPoints =
-                        toPoints x yData
+                        toPoints x maybeYData ys
 
                     zPoints : { points : List (DataPoint z), byY : Dict.Dict Float (List (DataPoint z)) }
                     zPoints =
-                        toPoints x zData
+                        toPoints x maybeZData zs
 
                     yValues : List Float
                     yValues =
@@ -280,9 +332,19 @@ toChartPointDict xData yData zData =
                             |> Set.fromList
                             |> Set.union (Set.fromList (Dict.keys zPoints.byY))
                             |> Set.toList
+
+                    xPoint : DataPoint x
+                    xPoint =
+                        { datum = x
+                        , missing = False
+                        , value = xScaled
+                        , valueScaled = xScaled
+                        , stackedStart = xBin
+                        , stackedEnd = xBin + Scale.bandwidth xData.bandScale
+                        }
                 in
                 ( ( xScaled
-                  , { x = { datum = x, value = xScaled, valueScaled = xScaled }
+                  , { x = xPoint
                     , ys = yPoints.points
                     , zs = zPoints.points
                     }
@@ -292,7 +354,7 @@ toChartPointDict xData yData zData =
                     |> List.map
                         (\yValue ->
                             ( ( xScaled, yValue )
-                            , { x = { datum = x, value = xScaled, valueScaled = xScaled }
+                            , { x = xPoint
                               , ys = Dict.get yValue yPoints.byY |> Maybe.withDefault []
                               , zs = Dict.get yValue zPoints.byY |> Maybe.withDefault []
                               }
@@ -313,25 +375,24 @@ toChartPointDict xData yData zData =
 -- |> Dict.fromList
 
 
-toPoints : x -> Maybe (RenderDataYZ x a) -> { points : List (DataPoint a), byY : Dict.Dict Float (List (DataPoint a)) }
-toPoints x maybeYZ =
+toPoints : x -> Maybe (RenderDataYZ x a) -> List ( a, Float, ( Float, Float ) ) -> { points : List (DataPoint a), byY : Dict.Dict Float (List (DataPoint a)) }
+toPoints x maybeYZ yzPoints =
     maybeYZ
         |> Maybe.map
             (\yz ->
                 let
                     points : List (DataPoint a)
                     points =
-                        yz.data
-                            |> List.filterMap
-                                (\yz_ ->
-                                    yz.toValue yz_ x
-                                        |> Maybe.map
-                                            (\yzValue ->
-                                                { datum = yz_
-                                                , value = yzValue
-                                                , valueScaled = Scale.convert yz.scale yzValue
-                                                }
-                                            )
+                        yzPoints
+                            |> List.map
+                                (\( datum, value, ( high, low ) ) ->
+                                    { datum = datum
+                                    , value = value
+                                    , missing = yz.toValue datum x == Nothing
+                                    , valueScaled = Scale.convert yz.scale value
+                                    , stackedStart = Scale.convert yz.scale high
+                                    , stackedEnd = Scale.convert yz.scale low
+                                    }
                                 )
                 in
                 { points = points
@@ -518,7 +579,7 @@ toStackedData props =
                                     |> List.map
                                         (\bin ->
                                             props.axisData.toValue a bin
-                                                |> Maybe.withDefault 0
+                                                |> Maybe.withDefault props.axisConfig.defaultValue
                                         )
                         in
                         ( a
@@ -587,17 +648,33 @@ toStackedData props =
     , stack = stack
     , values =
         List.map2
-            (\( a, domain, _ ) vs ->
+            (\( a, domain, values ) stackedValues ->
                 { datum = a
                 , color = props.axisData.toColor a
                 , label = props.axisData.toLabel a
                 , domain = domain
-                , stackedValues = vs
+                , values = List.map2 (\v sv -> ( a, v, sv )) values stackedValues
+                , stackedValues = stackedValues
                 }
             )
             dataWithValues
             stack.values
     }
+
+
+transpose : List (List a) -> List (List a)
+transpose listOfLists =
+    List.foldr (List.map2 (::)) (List.repeat (rowsLength listOfLists) []) listOfLists
+
+
+rowsLength : List (List a) -> Int
+rowsLength listOfLists =
+    case listOfLists of
+        [] ->
+            0
+
+        x :: _ ->
+            List.length x
 
 
 

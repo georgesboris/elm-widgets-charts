@@ -34,23 +34,30 @@ zLine =
 viewHover :
     W.Chart.Internal.RenderDataYZ x a
     -> W.Chart.Internal.DataPoint x
-    -> W.Chart.Internal.DataPoint a
+    -> List (W.Chart.Internal.DataPoint a)
     -> SC.Svg msg
-viewHover yzData xPoint yzPoint =
-    W.Svg.Circle.view
-        [ Svg.Attributes.fill Theme.baseBackground
-        , Svg.Attributes.stroke (yzData.toColor yzPoint.datum)
-        , W.Svg.Attributes.dropShadow
-            { xOffset = 0
-            , yOffset = 0
-            , radius = 4.0
-            , color = yzData.toColor yzPoint.datum
-            }
-        ]
-        { x = xPoint.valueScaled
-        , y = yzPoint.valueScaled
-        , radius = 4.0
-        }
+viewHover yzData xPoint yzPoints =
+    S.g
+        []
+        (List.map
+            (\yzPoint ->
+                W.Svg.Circle.view
+                    [ Svg.Attributes.fill Theme.baseBackground
+                    , Svg.Attributes.stroke (yzData.toColor yzPoint.datum)
+                    , W.Svg.Attributes.dropShadow
+                        { xOffset = 0
+                        , yOffset = 0
+                        , radius = 4.0
+                        , color = yzData.toColor yzPoint.datum
+                        }
+                    ]
+                    { x = xPoint.valueScaled
+                    , y = yzPoint.valueScaled
+                    , radius = 4.0
+                    }
+            )
+            yzPoints
+        )
 
 
 viewLines :

@@ -1,19 +1,37 @@
 module W.Chart exposing
-    ( config, width, ratio, padding, background, noTooltip, tooltipByNearest, binPaddingInner, binPaddingOuter, htmlAttrs, ChartAttribute, Config
-    , view, ChartElement
-    , withYData, withYDataset, withZData, withZDataset
-    , axisLabel, defaultValue, format, logarithmic, noAxisLine, noGridLines, safety, stacked, stackedRelative, ticks, AxisAttribute
-    , globalStyles
+    ( config, view, globalStyles, Widget
+    , width, ratio, padding, background, noTooltip, tooltipByNearest, binPaddingInner, binPaddingOuter, htmlAttrs, ChartAttribute, Config
+    , withY, withYList, withZ, withZList
+    , axisLabel, defaultValue, format, noAxisLine, noGridLines, safety, stacked, stackedRelative, ticks, AxisAttribute
     , debug
     )
 
 {-|
 
-@docs config, width, ratio, padding, background, noTooltip, tooltipByNearest, binPaddingInner, binPaddingOuter, htmlAttrs, ChartAttribute, Config
-@docs view, ChartElement
-@docs withYData, withYDataset, withZData, withZDataset
-@docs axisLabel, defaultValue, format, logarithmic, noAxisLine, noGridLines, safety, stacked, stackedRelative, ticks, AxisAttribute
-@docs globalStyles
+
+# Datasets
+
+@docs config, view, globalStyles, Widget
+
+
+# Configuration
+
+@docs width, ratio, padding, background, noTooltip, tooltipByNearest, binPaddingInner, binPaddingOuter, htmlAttrs, ChartAttribute, Config
+
+
+# Datasets
+
+@docs withY, withYList, withZ, withZList
+
+
+# Axis
+
+@docs axisLabel, defaultValue, format, noAxisLine, noGridLines, safety, stacked, stackedRelative, ticks, AxisAttribute
+
+
+# Debugging
+
+@docs debug
 
 -}
 
@@ -42,8 +60,8 @@ type alias Config msg x y z datasets =
 
 
 {-| -}
-type alias ChartElement msg x y z datasets =
-    W.Chart.Internal.ChartElement msg x y z datasets
+type alias Widget msg x y z datasets =
+    W.Chart.Internal.Widget msg x y z datasets
 
 
 {-| -}
@@ -74,6 +92,7 @@ labelFontSize =
 -- Config
 
 
+{-| -}
 config :
     List (ChartAttribute msg)
     ->
@@ -102,51 +121,61 @@ config =
 -- Config : Attributes
 
 
+{-| -}
 width : Int -> ChartAttribute msg
 width v =
     Attr.attr (\a -> { a | width = toFloat v })
 
 
+{-| -}
 ratio : Float -> ChartAttribute msg
 ratio v =
     Attr.attr (\a -> { a | ratio = v })
 
 
+{-| -}
 padding : Int -> ChartAttribute msg
 padding v =
     Attr.attr (\a -> { a | padding = toFloat v })
 
 
+{-| -}
 binPaddingOuter : Int -> ChartAttribute msg
 binPaddingOuter v =
     Attr.attr (\a -> { a | binPaddingOuter = toFloat v })
 
 
+{-| -}
 binPaddingInner : Int -> ChartAttribute msg
 binPaddingInner v =
     Attr.attr (\a -> { a | binPaddingInner = toFloat v })
 
 
+{-| -}
 background : String -> ChartAttribute msg
 background v =
     Attr.attr (\a -> { a | background = v })
 
 
+{-| -}
 noTooltip : ChartAttribute msg
 noTooltip =
     Attr.attr (\a -> { a | hoverTarget = Nothing })
 
 
+{-| -}
 tooltipByNearest : ChartAttribute msg
 tooltipByNearest =
     Attr.attr (\a -> { a | hoverTarget = Just W.Chart.Internal.NearestPoint })
 
 
+{-| -}
 htmlAttrs : List (H.Attribute msg) -> ChartAttribute msg
 htmlAttrs v =
     Attr.attr (\a -> { a | htmlAttributes = v })
 
 
+{-| -}
 debug : ChartAttribute msg
 debug =
     Attr.attr (\a -> { a | debug = True })
@@ -156,7 +185,8 @@ debug =
 -- Datasets
 
 
-withYData :
+{-| -}
+withY :
     List AxisAttribute
     ->
         { label : String
@@ -165,7 +195,7 @@ withYData :
         }
     -> Config msg x any z datasets
     -> Config msg x () z { datasets | yData : () }
-withYData =
+withY =
     Attr.withAttrs W.Chart.Internal.defaultAxisAttributes
         (\axisAttrs axisData (W.Chart.Internal.Config cfg) ->
             let
@@ -188,7 +218,8 @@ withYData =
         )
 
 
-withYDataset :
+{-| -}
+withYList :
     List AxisAttribute
     ->
         { data : List y
@@ -198,7 +229,7 @@ withYDataset :
         }
     -> Config msg x any z datasets
     -> Config msg x y z { datasets | yData : () }
-withYDataset =
+withYList =
     Attr.withAttrs W.Chart.Internal.defaultAxisAttributes
         (\axisAttrs axisData (W.Chart.Internal.Config cfg) ->
             let
@@ -215,7 +246,8 @@ withYDataset =
         )
 
 
-withZData :
+{-| -}
+withZ :
     List AxisAttribute
     ->
         { label : String
@@ -224,7 +256,7 @@ withZData :
         }
     -> Config msg x y any datasets
     -> Config msg x y () { datasets | zData : () }
-withZData =
+withZ =
     Attr.withAttrs W.Chart.Internal.defaultAxisAttributes
         (\axisAttrs axisData (W.Chart.Internal.Config cfg) ->
             let
@@ -247,7 +279,8 @@ withZData =
         )
 
 
-withZDataset :
+{-| -}
+withZList :
     List AxisAttribute
     ->
         { data : List z
@@ -257,7 +290,7 @@ withZDataset :
         }
     -> Config msg x y any datasets
     -> Config msg x y z { datasets | zData : () }
-withZDataset =
+withZList =
     Attr.withAttrs W.Chart.Internal.defaultAxisAttributes
         (\axisAttrs axisData (W.Chart.Internal.Config cfg) ->
             let
@@ -320,10 +353,11 @@ stackedRelative =
     Attr.attr (\attrs -> { attrs | stackType = W.Chart.Internal.RelativeStack })
 
 
-{-| -}
-logarithmic : Float -> AxisAttribute
-logarithmic basis =
-    Attr.attr (\attrs -> { attrs | scale = W.Chart.Internal.Logarithmic basis })
+
+-- TODO: Log scales doesn't work yet. Need to investigate it more.
+-- logarithmic : Float -> AxisAttribute
+-- logarithmic basis =
+--     Attr.attr (\attrs -> { attrs | scale = W.Chart.Internal.Logarithmic basis })
 
 
 {-| -}
@@ -342,7 +376,8 @@ noGridLines =
 -- View
 
 
-view : List (W.Chart.Internal.ChartElement msg x y z datasets) -> Config msg x y z datasets -> H.Html msg
+{-| -}
+view : List (W.Chart.Internal.Widget msg x y z datasets) -> Config msg x y z datasets -> H.Html msg
 view widgets cfg =
     let
         renderData : RenderData msg x y z datasets
@@ -355,7 +390,7 @@ view widgets cfg =
     H.div
         [ HA.class "ew-charts"
         , HA.classList
-            [ ( "m--unfocus", d.attrs.hoverFocus && d.attrs.hoverTarget /= Nothing )
+            [ ( "m--unfocus", True || d.attrs.hoverFocus && d.attrs.hoverTarget /= Nothing )
             , ( "m--debug", d.attrs.debug )
             ]
         ]
@@ -364,8 +399,10 @@ view widgets cfg =
             , SA.class [ "ew-charts--svg" ]
             ]
             [ -- Grid
-              viewYGrid renderData
-            , viewXGrid renderData
+              W.Chart.Internal.viewTranslateChart d.spacings
+                [ viewYGrid renderData
+                , viewXGrid renderData
+                ]
 
             -- Labels
             , viewLabels renderData
@@ -375,13 +412,13 @@ view widgets cfg =
             , viewYAxis renderData
             , viewZAxis renderData
 
-            -- Elements
-            , viewChartElements "bg" .background renderData widgets
-            , viewChartElements "main" .main renderData widgets
-            , viewChartElements "fg" .foreground renderData widgets
-
-            -- Hover
-            , viewHover renderData widgets
+            -- Elements & Hover
+            , W.Chart.Internal.viewTranslateChart d.spacings
+                [ viewWidgets "bg" .background renderData widgets
+                , viewWidgets "main" .main renderData widgets
+                , viewWidgets "fg" .foreground renderData widgets
+                , viewHover renderData widgets
+                ]
             ]
         ]
 
@@ -390,16 +427,16 @@ view widgets cfg =
 -- Static Elements
 
 
-viewChartElements :
+viewWidgets :
     String
-    -> (W.Chart.Internal.ChartElementData msg x y z datasets -> Maybe (RenderData msg x y z datasets -> Svg.Svg msg))
+    -> (W.Chart.Internal.WidgetData msg x y z datasets -> Maybe (RenderData msg x y z datasets -> Svg.Svg msg))
     -> RenderData msg x y z datasets
-    -> List (W.Chart.Internal.ChartElement msg x y z datasets)
+    -> List (W.Chart.Internal.Widget msg x y z datasets)
     -> SC.Svg msg
-viewChartElements class getter renderData widgets =
+viewWidgets class getter renderData widgets =
     widgets
-        |> List.filterMap (\(W.Chart.Internal.ChartElement w) -> Maybe.map (\el_ -> el_ renderData) (getter w))
-        |> S.g [ SA.class [ "ew-charts-" ++ class ] ]
+        |> List.filterMap (\(W.Chart.Internal.Widget w) -> Maybe.map (\el_ -> el_ renderData) (getter w))
+        |> S.g [ SA.class [ "ew-charts--" ++ class ] ]
 
 
 
@@ -408,7 +445,7 @@ viewChartElements class getter renderData widgets =
 
 viewHover :
     RenderData msg x y z datasets
-    -> List (W.Chart.Internal.ChartElement msg x y z datasets)
+    -> List (W.Chart.Internal.Widget msg x y z datasets)
     -> SC.Svg msg
 viewHover (RenderData d) widgets =
     case d.attrs.hoverTarget of
@@ -424,7 +461,7 @@ viewHover (RenderData d) widgets =
 
 viewHoverX :
     W.Chart.Internal.RenderDataFull msg x y z
-    -> List (W.Chart.Internal.ChartElement msg x y z datasets)
+    -> List (W.Chart.Internal.Widget msg x y z datasets)
     -> SC.Svg msg
 viewHoverX d widgets =
     let
@@ -460,12 +497,12 @@ viewHoverX d widgets =
                     ]
                 ]
             )
-        |> W.Chart.Internal.viewTranslateChart d.spacings
+        |> S.g []
 
 
 viewHoverNearest :
     W.Chart.Internal.RenderDataFull msg x y z
-    -> List (W.Chart.Internal.ChartElement msg x y z datasets)
+    -> List (W.Chart.Internal.Widget msg x y z datasets)
     -> SC.Svg msg
 viewHoverNearest d widgets =
     W.Chart.Internal.Voronoi.view
@@ -484,33 +521,32 @@ viewHoverNearest d widgets =
 
 viewHoverData :
     W.Chart.Internal.RenderDataFull msg x y z
-    -> List (W.Chart.Internal.ChartElement msg x y z datasets)
+    -> List (W.Chart.Internal.Widget msg x y z datasets)
     -> W.Chart.Internal.ChartPoint x y z
     -> SC.Svg msg
 viewHoverData d widgets point =
     widgets
         |> List.filterMap
-            (\(W.Chart.Internal.ChartElement w) ->
+            (\(W.Chart.Internal.Widget w) ->
                 w.hover
                     |> Maybe.andThen
                         (\hover ->
                             case hover of
                                 W.Chart.Internal.HoverX fn ->
                                     fn d point.x
-                                        |> List.singleton
                                         |> Just
 
                                 W.Chart.Internal.HoverY fn ->
                                     Maybe.map
                                         (\yData ->
-                                            List.map (fn d yData point.x) point.ys
+                                            fn d yData point.x point.ys
                                         )
                                         d.y
 
                                 W.Chart.Internal.HoverZ fn ->
                                     Maybe.map
                                         (\zData ->
-                                            List.map (fn d zData point.x) point.zs
+                                            fn d zData point.x point.zs
                                         )
                                         d.z
 
@@ -518,13 +554,11 @@ viewHoverData d widgets point =
                                     Maybe.map2
                                         (\yData zData ->
                                             fn d yData zData point
-                                                |> List.singleton
                                         )
                                         d.y
                                         d.z
                         )
             )
-        |> List.concat
         |> S.g []
 
 
@@ -623,7 +657,7 @@ viewYGrid (RenderData d) =
                             ]
                             []
                     )
-                |> W.Chart.Internal.viewTranslateChart d.spacings
+                |> S.g []
 
         _ ->
             H.text ""
@@ -632,7 +666,7 @@ viewYGrid (RenderData d) =
 viewXGrid : RenderData msg x y z datasets -> SC.Svg msg
 viewXGrid (RenderData d) =
     case ( d.attrs.yAxis.showGridLines, d.y ) of
-        ( True, Just yData ) ->
+        ( True, Just _ ) ->
             Scale.ticks d.x.scale d.attrs.xAxis.ticks
                 |> List.map
                     (\tick ->
@@ -651,7 +685,7 @@ viewXGrid (RenderData d) =
                             ]
                             []
                     )
-                |> W.Chart.Internal.viewTranslateChart d.spacings
+                |> S.g []
 
         _ ->
             H.text ""
@@ -794,19 +828,26 @@ viewVLine props =
 -- Styles
 
 
+{-| -}
 globalStyles : SC.Svg msg
 globalStyles =
     H.node "style"
         []
         [ H.text ("""
+            /* Prevent Tooltip Clipping */
+
             .ew-charts--svg,
             .ew-charts--tooltip-wrapper {
                 overflow: visible;
             }
 
-            .ew-charts.m--unfocus:hover .ew-charts-main {
+            /* Unfocus */
+
+            .ew-charts.m--unfocus:hover .ew-charts--main {
                 filter: grayscale(100%);
             }
+
+            /* Hover */
 
             .ew-charts--hover {
                 display: none;
@@ -816,9 +857,7 @@ globalStyles =
                 display: block;
             }
 
-            .ew-charts--shadow {
-                filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.5));
-            }
+            /* Debug */
 
             .ew-charts.m--debug .ew-charts--hover-target {
                 fill: rgba(255, 0, 0, 0.05);
@@ -828,6 +867,8 @@ globalStyles =
                 fill: rgba(255, 0, 0, 0.05);
                 stroke: rgba(255, 0, 0, 0.5);
             }
+
+            /* Tooltip */
 
             .ew-charts--tooltip {
                 display: flex;
@@ -857,6 +898,11 @@ globalStyles =
                 padding: 4px;
             }
 
+            .ew-charts--tooltip-x {
+                font-weight: normal;
+                color: """ ++ Theme.baseAux ++ """;
+            }
+
             .ew-charts--tooltip-x,
             .ew-charts--tooltip-yz--label {
                 font-size: inherit;
@@ -867,7 +913,7 @@ globalStyles =
             }
 
             .ew-charts--tooltip-yz {
-                border-top: 1px solid """ ++ Theme.baseAuxWithAlpha 0.3 ++ """;
+                border-top: 1px solid """ ++ Theme.baseAuxWithAlpha 0.1 ++ """;
             }
             .ew-charts--tooltip-yz--label {
                 padding-bottom: 4px;
@@ -880,6 +926,8 @@ globalStyles =
             }
             .ew-charts--tooltip-yz--item-label {}
             .ew-charts--tooltip-yz--item-value {}
+
+            /* Axis & Labels */
 
             .ew-charts .tick text {
                 fill: """ ++ Theme.baseAux ++ """;
@@ -894,6 +942,8 @@ globalStyles =
             .ew-charts--x-axis .tick line {
                 stroke: """ ++ Theme.baseAux ++ """;
             }
+
+            /* Animations */
 
             .ew-charts--animate-fade {
                 animation: ew-charts--fade 0.4s ease-out forwards;
@@ -932,6 +982,20 @@ globalStyles =
                 }
                 to {
                     transform: scale(1);
+                }
+            }
+
+            .ew-charts--animate-scale-z {
+                transform: scale(1,0);
+                animation: ew-charts--scale-z 0.2s ease-out forwards;
+            }
+
+            @keyframes ew-charts--scale-z {
+                from {
+                    transform: scale(1,0);
+                }
+                to {
+                    transform: scale(1,1);
                 }
             }
 

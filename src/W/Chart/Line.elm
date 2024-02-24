@@ -1,5 +1,11 @@
 module W.Chart.Line exposing (yLine, zLine)
 
+{-|
+
+@docs yLine, zLine
+
+-}
+
 import Html as H
 import Path
 import Scale
@@ -7,24 +13,25 @@ import Shape
 import Svg.Attributes
 import Theme
 import TypedSvg as S
-import TypedSvg.Attributes.InPx as SAP
 import TypedSvg.Core as SC
-import W.Chart.ChartElement
 import W.Chart.Internal
+import W.Chart.Widget
 import W.Svg.Attributes
 import W.Svg.Circle
 
 
-yLine : W.Chart.Internal.ChartElement msg x y z { datasets | yData : () }
+{-| -}
+yLine : W.Chart.Internal.Widget msg x y z { datasets | yData : () }
 yLine =
-    W.Chart.ChartElement.fromY (viewLines .y)
-        |> W.Chart.ChartElement.withHoverY (\_ -> viewHover)
+    W.Chart.Widget.fromY (viewLines .y)
+        |> W.Chart.Widget.withHoverY (\_ -> viewHover)
 
 
-zLine : W.Chart.Internal.ChartElement msg x y z { datasets | zData : () }
+{-| -}
+zLine : W.Chart.Internal.Widget msg x y z { datasets | zData : () }
 zLine =
-    W.Chart.ChartElement.fromZ (viewLines .z)
-        |> W.Chart.ChartElement.withHoverZ (\_ -> viewHover)
+    W.Chart.Widget.fromZ (viewLines .z)
+        |> W.Chart.Widget.withHoverZ (\_ -> viewHover)
 
 
 
@@ -120,6 +127,6 @@ viewLines toRenderDataset (W.Chart.Internal.RenderData d) =
                                     ]
                                 ]
                         )
-                    |> W.Chart.Internal.viewTranslateChart d.spacings
+                    |> S.g []
             )
         |> Maybe.withDefault (H.text "")

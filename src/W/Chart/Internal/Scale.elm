@@ -1,114 +1,67 @@
-module W.Chart.Internal.Scale exposing (normalizeLinear)
+module W.Chart.Internal.Scale exposing
+    ( normalize
+    , normalizeDomains
+    )
 
 import Scale
 
 
-normalizeLinear :
-    Scale.ContinuousScale Float
-    -> Scale.ContinuousScale Float
+normalize :
+    ( ( Float, Float ) -> ( Float, Float ) -> Scale.ContinuousScale Float, Scale.ContinuousScale Float )
+    -> ( ( Float, Float ) -> ( Float, Float ) -> Scale.ContinuousScale Float, Scale.ContinuousScale Float )
     -> ( Scale.ContinuousScale Float, Scale.ContinuousScale Float )
-normalizeLinear a b =
+normalize ( fnA, a ) ( fnB, b ) =
     let
-        aExtent : Extent
-        aExtent =
-            toExtent (Scale.domain a)
-
-        bExtent : Extent
-        bExtent =
-            toExtent (Scale.domain b)
-
-        ratio : Ratio
-        ratio =
-            toRatio aExtent bExtent
+        ( aNormalized, bNormalized ) =
+            normalizeDomains (Scale.domain a) (Scale.domain b)
     in
-    ( Scale.linear (Scale.range a) (toNormalizedExtent aExtent ratio)
-    , Scale.linear (Scale.range b) (toNormalizedExtent bExtent ratio)
+    ( fnA (Scale.range a) aNormalized
+    , fnB (Scale.range b) bNormalized
     )
 
 
-type ScaleWeight
-    = High
-    | Low
-
-
-type alias Extent =
-    { weight : ScaleWeight
-    , low : Float
-    , high : Float
-    , delta : Float
-    }
-
-
-type alias Ratio =
-    { low : Float
-    , high : Float
-    }
-
-
-toExtent : ( Float, Float ) -> Extent
-toExtent ( low, high ) =
-    if high > 0 && low < 0 then
-        if high >= abs low then
-            { weight = High
-            , low = low
-            , high = high
-            , delta = high - low
-            }
-
-        else
-            { weight = Low
-            , low = low
-            , high = high
-            , delta = abs (high - low)
-            }
-
-    else if low < 0 then
-        { weight = Low
-        , low = low
-        , high = 0.0
-        , delta = abs low
-        }
-
-    else
-        { weight = High
-        , low = 0.0
-        , high = high
-        , delta = abs high
-        }
-
-
-toRatio : Extent -> Extent -> Ratio
-toRatio a b =
+normalizeDomains :
+    ( Float, Float )
+    -> ( Float, Float )
+    -> ( ( Float, Float ), ( Float, Float ) )
+normalizeDomains a b =
     let
-        high : Float
-        high =
-            Basics.max a.high b.high
+        aDomain : ( Float, Float )
+        aDomain =
+            toZeroDomain a
 
-        low : Float
-        low =
-            Basics.min a.low b.low
+        bDomain : ( Float, Float )
+        bDomain =
+            toZeroDomain b
 
         delta : Float
         delta =
-            high - low
+            Basics.max
+                (toDomainDelta aDomain)
+                (toDomainDelta bDomain)
     in
-    { high = safeDivide high delta
-    , low = safeDivide low delta
-    }
+    ( normalizeDomain delta aDomain
+    , normalizeDomain delta bDomain
+    )
 
 
-toNormalizedExtent : Extent -> Ratio -> ( Float, Float )
-toNormalizedExtent extent ratio =
-    case extent.weight of
-        Low ->
-            ( extent.low
-            , safeDivide (extent.low * ratio.high) ratio.low
-            )
+toZeroDomain : ( Float, Float ) -> ( Float, Float )
+toZeroDomain =
+    Tuple.mapBoth
+        (Basics.min 0)
+        (Basics.max 0)
 
-        High ->
-            ( safeDivide (extent.high * ratio.low) ratio.high
-            , extent.high
-            )
+
+toDomainDelta : ( Float, Float ) -> Float
+toDomainDelta ( min, max ) =
+    abs (safeDivide min max)
+
+
+normalizeDomain : Float -> ( Float, Float ) -> ( Float, Float )
+normalizeDomain delta ( min, max ) =
+    ( max * delta * -1
+    , max
+    )
 
 
 safeDivide : Float -> Float -> Float

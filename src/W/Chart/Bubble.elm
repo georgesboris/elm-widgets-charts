@@ -1,15 +1,22 @@
 module W.Chart.Bubble exposing
-    ( Attribute
-    , colorCustomY
-    , colorCustomZ
-    , colorFromPercentile
-    , colorFromPercentiles
-    , colorFromRadius
-    , colorFromRadiusPercentile
-    , colorFromValue
-    , viewY
-    , viewZ
+    ( viewY, viewZ
+    , Attribute
+    , colorFromPercentile, colorFromPercentiles, colorFromRadius, colorFromRadiusPercentile, colorFromValue
+    , colorCustomY, colorCustomZ
     )
+
+{-|
+
+@docs viewY, viewZ
+
+
+# Color
+
+@docs Attribute
+@docs colorFromPercentile, colorFromPercentiles, colorFromRadius, colorFromRadiusPercentile, colorFromValue
+@docs colorCustomY, colorCustomZ
+
+-}
 
 import Html as H
 import Scale
@@ -18,11 +25,10 @@ import Svg.Attributes
 import Theme
 import TypedSvg as S
 import TypedSvg.Attributes as SA
-import TypedSvg.Attributes.InPx as SAP
 import TypedSvg.Types as ST
 import W.Chart
-import W.Chart.ChartElement
 import W.Chart.Internal
+import W.Chart.Widget
 import W.Svg.Attributes
 import W.Svg.Circle
 
@@ -31,28 +37,30 @@ import W.Svg.Circle
 -- View
 
 
+{-| -}
 viewY :
     List (Attribute msg x y z)
     -> { toRadius : x -> ( y, Float ) -> Float }
-    -> W.Chart.ChartElement msg x y z { datasets | yData : () }
+    -> W.Chart.Internal.Widget msg x y z { datasets | yData : () }
 viewY attrs_ props =
     attrs_
         |> applyAttrs AttributesY
         |> toAttrsY
-        |> Maybe.map (view .y W.Chart.ChartElement.withHoverY props)
-        |> Maybe.withDefault W.Chart.ChartElement.empty
+        |> Maybe.map (view .y W.Chart.Widget.withHoverY props)
+        |> Maybe.withDefault W.Chart.Widget.empty
 
 
+{-| -}
 viewZ :
     List (Attribute msg x y z)
     -> { toRadius : x -> ( z, Float ) -> Float }
-    -> W.Chart.ChartElement msg x y z { datasets | zData : () }
+    -> W.Chart.Internal.Widget msg x y z { datasets | zData : () }
 viewZ attrs_ props =
     attrs_
         |> applyAttrs AttributesZ
         |> toAttrsZ
-        |> Maybe.map (view .z W.Chart.ChartElement.withHoverZ props)
-        |> Maybe.withDefault W.Chart.ChartElement.empty
+        |> Maybe.map (view .z W.Chart.Widget.withHoverZ props)
+        |> Maybe.withDefault W.Chart.Widget.empty
 
 
 
@@ -65,17 +73,17 @@ view :
         ((W.Chart.Internal.RenderDataFull msg x y z
           -> W.Chart.Internal.RenderDataYZ x a
           -> W.Chart.Internal.DataPoint x
-          -> W.Chart.Internal.DataPoint a
+          -> List (W.Chart.Internal.DataPoint a)
           -> Svg.Svg msg
          )
-         -> W.Chart.ChartElement msg x y z datasets
-         -> W.Chart.ChartElement msg x y z datasets
+         -> W.Chart.Internal.Widget msg x y z datasets
+         -> W.Chart.Internal.Widget msg x y z datasets
         )
     -> { toRadius : x -> ( a, Float ) -> Float }
     -> AttributesYZ msg x a
-    -> W.Chart.ChartElement msg x y z datasets
+    -> W.Chart.Internal.Widget msg x y z datasets
 view toYZ withHover props attrs =
-    W.Chart.ChartElement.fromX
+    W.Chart.Widget.fromX
         (\(W.Chart.Internal.RenderData d) ->
             toYZ d
                 |> Maybe.map
@@ -100,24 +108,13 @@ view toYZ withHover props attrs =
                                         [ viewBubble [] yzData attrs bubbleData point
                                         ]
                                 )
-                            |> W.Chart.Internal.viewTranslateChart d.spacings
+                            |> S.g []
                     )
                 |> Maybe.withDefault (H.text "")
         )
         |> withHover
-            (\d yzData xPoint yzPoint ->
+            (\d yzData xPoint yzPoints ->
                 let
-                    color : String
-                    color =
-                        attrs.toColor
-                            { x = xPoint
-                            , yz = yzPoint
-                            , yzDomain = Scale.domain yzData.scale
-                            , yzColor = yzData.toColor yzPoint.datum
-                            , radius = props.toRadius xPoint.datum ( yzPoint.datum, yzPoint.value )
-                            , radiusDomain = bubbleData.radiusDomain
-                            }
-
                     bubbleData : BubbleData x a
                     bubbleData =
                         toBubbleData
@@ -126,22 +123,39 @@ view toYZ withHover props attrs =
                             , toRadius = props.toRadius
                             }
                 in
-                viewBubble
-                    [ SA.opacity (ST.Opacity 0.5)
-                    , W.Svg.Attributes.dropShadow
-                        { xOffset = 0
-                        , yOffset = 0
-                        , radius = 4.0
-                        , color = color
-                        }
-                    ]
-                    yzData
-                    attrs
-                    bubbleData
-                    { x = xPoint
-                    , yz = yzPoint
-                    , radius = props.toRadius xPoint.datum ( yzPoint.datum, yzPoint.value )
-                    }
+                yzPoints
+                    |> List.map
+                        (\yzPoint ->
+                            let
+                                color : String
+                                color =
+                                    attrs.toColor
+                                        { x = xPoint
+                                        , yz = yzPoint
+                                        , yzDomain = Scale.domain yzData.scale
+                                        , yzColor = yzData.toColor yzPoint.datum
+                                        , radius = props.toRadius xPoint.datum ( yzPoint.datum, yzPoint.value )
+                                        , radiusDomain = bubbleData.radiusDomain
+                                        }
+                            in
+                            viewBubble
+                                [ SA.opacity (ST.Opacity 0.5)
+                                , W.Svg.Attributes.dropShadow
+                                    { xOffset = 0
+                                    , yOffset = 0
+                                    , radius = 4.0
+                                    , color = color
+                                    }
+                                ]
+                                yzData
+                                attrs
+                                bubbleData
+                                { x = xPoint
+                                , yz = yzPoint
+                                , radius = props.toRadius xPoint.datum ( yzPoint.datum, yzPoint.value )
+                                }
+                        )
+                    |> S.g []
             )
 
 
@@ -299,16 +313,16 @@ toBubbleData props =
                                                     , missing = False
                                                     , value = xScaled
                                                     , valueScaled = xScaled
-                                                    , stackedStart = 0
-                                                    , stackedEnd = 0
+                                                    , valueStart = 0
+                                                    , valueEnd = 0
                                                     }
                                                 , yz =
                                                     { datum = y
                                                     , missing = False
                                                     , value = yValue
                                                     , valueScaled = Scale.convert props.yzData.scale yValue
-                                                    , stackedStart = 0
-                                                    , stackedEnd = 0
+                                                    , valueStart = 0
+                                                    , valueEnd = 0
                                                     }
                                                 , radius = props.toRadius x ( y, yValue )
                                                 }
@@ -337,6 +351,7 @@ toBubbleData props =
 -- Attributes : Setters
 
 
+{-| -}
 colorFromValue : (Float -> String) -> Attribute msg x y z
 colorFromValue v =
     Attribute
@@ -350,6 +365,7 @@ colorFromValue v =
         )
 
 
+{-| -}
 colorFromRadius : (Float -> String) -> Attribute msg x y z
 colorFromRadius v =
     Attribute
@@ -363,6 +379,7 @@ colorFromRadius v =
         )
 
 
+{-| -}
 colorFromPercentile : (Float -> String) -> Attribute msg x y z
 colorFromPercentile v =
     Attribute
@@ -376,6 +393,7 @@ colorFromPercentile v =
         )
 
 
+{-| -}
 colorFromRadiusPercentile : (Float -> String) -> Attribute msg x y z
 colorFromRadiusPercentile v =
     Attribute
@@ -389,6 +407,7 @@ colorFromRadiusPercentile v =
         )
 
 
+{-| -}
 colorFromPercentiles : (Float -> Float -> String) -> Attribute msg x y z
 colorFromPercentiles v =
     Attribute
@@ -402,6 +421,7 @@ colorFromPercentiles v =
         )
 
 
+{-| -}
 colorCustomY :
     ({ x : W.Chart.Internal.DataPoint x
      , yz : W.Chart.Internal.DataPoint y
@@ -425,6 +445,7 @@ colorCustomY v =
         )
 
 
+{-| -}
 colorCustomZ :
     ({ x : W.Chart.Internal.DataPoint x
      , yz : W.Chart.Internal.DataPoint z

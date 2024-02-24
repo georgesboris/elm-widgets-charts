@@ -4,9 +4,6 @@ module W.Chart.Internal exposing
     , AxisAttributes
     , AxisConfig
     , AxisType(..)
-    , ChartElement(..)
-    , ChartElementData
-    , ChartElementHover(..)
     , ChartPoint
     , ChartPointDict
     , Config(..)
@@ -20,8 +17,12 @@ module W.Chart.Internal exposing
     , ScaleType(..)
     , Spacings
     , StackType(..)
+    , Widget(..)
+    , WidgetData
+    , WidgetHover(..)
     , applyAttrs
     , attrAnimationDelay
+    , attrAnimationDelayX
     , attrTransformOrigin
     , bounds
     , boundsAt
@@ -49,25 +50,26 @@ import TypedSvg as S
 import TypedSvg.Attributes as SA
 import TypedSvg.Core as SC
 import TypedSvg.Types as ST
+import W.Chart.Internal.Scale
 
 
 
 -- DataPoint
 
 
-type ChartElement msg x y z datasets
-    = ChartElement (ChartElementData msg x y z datasets)
+type Widget msg x y z datasets
+    = Widget (WidgetData msg x y z datasets)
 
 
-type alias ChartElementData msg x y z datasets =
+type alias WidgetData msg x y z datasets =
     { main : Maybe (RenderData msg x y z datasets -> Svg.Svg msg)
     , background : Maybe (RenderData msg x y z datasets -> Svg.Svg msg)
     , foreground : Maybe (RenderData msg x y z datasets -> Svg.Svg msg)
-    , hover : Maybe (ChartElementHover msg x y z datasets)
+    , hover : Maybe (WidgetHover msg x y z datasets)
     }
 
 
-type ChartElementHover msg x y z datasets
+type WidgetHover msg x y z datasets
     = HoverX (RenderDataFull msg x y z -> DataPoint x -> Svg.Svg msg)
     | HoverY (RenderDataFull msg x y z -> RenderDataYZ x y -> DataPoint x -> List (DataPoint y) -> Svg.Svg msg)
     | HoverZ (RenderDataFull msg x y z -> RenderDataYZ x z -> DataPoint x -> List (DataPoint z) -> Svg.Svg msg)
@@ -141,8 +143,8 @@ type alias DataPoint a =
     , missing : Bool
     , value : Float
     , valueScaled : Float
-    , stackedStart : Float
-    , stackedEnd : Float
+    , valueStart : Float
+    , valueEnd : Float
     }
 
 
@@ -207,11 +209,11 @@ toRenderData (Config cfg) =
         yBefore =
             cfg.yData
                 |> Maybe.map
-                    (\yData ->
+                    (\yData_ ->
                         toStackedData
                             { spacings = spacings
                             , xData = cfg.xData
-                            , axisData = yData
+                            , axisData = yData_
                             , axisConfig = cfg.attrs.yAxis
                             }
                     )
@@ -220,40 +222,89 @@ toRenderData (Config cfg) =
         zBefore =
             cfg.zData
                 |> Maybe.map
-                    (\zData ->
+                    (\zData_ ->
                         toStackedData
                             { spacings = spacings
                             , xData = cfg.xData
-                            , axisData = zData
+                            , axisData = zData_
                             , axisConfig = cfg.attrs.zAxis
                             }
                     )
 
         -- If both X and Z are defined
         -- we normalize them so their 0.0 match.
-        ( yNormalized, zNormalized ) =
-            case ( ( yBefore, zBefore ), ( cfg.attrs.yAxis.scale, cfg.attrs.zAxis.scale ) ) of
-                ( ( Just y, Just z ), ( Linear, Linear ) ) ->
-                    -- let
-                    --     ( yScale, zScale ) =
-                    --         W.Chart.Internal.Scale.normalizeLinear y.scale z.scale
-                    -- in
-                    -- ( Just { y | scale = yScale }
-                    -- , Just { z | scale = zScale }
-                    -- )
-                    ( yBefore, zBefore )
+        ( yData, zData ) =
+            case ( ( yBefore, cfg.attrs.yAxis.scale ), ( zBefore, cfg.attrs.zAxis.scale ) ) of
+                ( ( Just y, Linear ), ( Just z, Linear ) ) ->
+                    let
+                        ( yDomain_, zDomain_ ) =
+                            W.Chart.Internal.Scale.normalizeDomains
+                                (Scale.domain y.scale)
+                                (Scale.domain z.scale)
+                    in
+                    ( Just { y | scale = toScale spacings cfg.attrs.yAxis yDomain_ }
+                    , Just { z | scale = toScale spacings cfg.attrs.zAxis zDomain_ }
+                    )
 
                 _ ->
-                    ( yBefore, zBefore )
+                    ( yBefore
+                        |> Maybe.map
+                            (\y ->
+                                { y
+                                    | scale =
+                                        toScale spacings
+                                            cfg.attrs.yAxis
+                                            (Scale.domain y.scale)
+                                }
+                            )
+                    , zBefore
+                        |> Maybe.map
+                            (\z ->
+                                { z
+                                    | scale =
+                                        toScale spacings
+                                            cfg.attrs.zAxis
+                                            (Scale.domain z.scale)
+                                }
+                            )
+                    )
     in
     RenderData
         { attrs = cfg.attrs
         , spacings = spacings
         , x = x
-        , y = yNormalized
-        , z = zNormalized
-        , points = toChartPointDict x yNormalized zNormalized
+        , y = yData
+        , z = zData
+        , points = toChartPointDict x yData zData
         }
+
+
+toScale : Spacings -> AxisAttributes -> ( Float, Float ) -> Scale.ContinuousScale Float
+toScale spacings axisAttributes domain =
+    domain
+        |> toDomainWithSafety axisAttributes
+        |> toScaleFn spacings axisAttributes
+
+
+toScaleFn : Spacings -> AxisAttributes -> ( Float, Float ) -> Scale.ContinuousScale Float
+toScaleFn spacings axisAttributes domain =
+    case axisAttributes.scale of
+        Linear ->
+            Scale.linear ( spacings.chart.height, 0 ) domain
+
+        Logarithmic base ->
+            Scale.log base ( spacings.chart.height, 0 ) domain
+                |> Debug.log "log"
+
+
+toDomainWithSafety : AxisAttributes -> ( Float, Float ) -> ( Float, Float )
+toDomainWithSafety axisAttributes domain =
+    case Tuple.mapBoth ceiling ceiling domain of
+        ( 0, 0 ) ->
+            ( 0.0, 100.0 )
+
+        _ ->
+            safeBounds axisAttributes.safety domain
 
 
 toChartPointDict :
@@ -339,8 +390,8 @@ toChartPointDict xData maybeYData maybeZData =
                         , missing = False
                         , value = xScaled
                         , valueScaled = xScaled
-                        , stackedStart = xBin
-                        , stackedEnd = xBin + Scale.bandwidth xData.bandScale
+                        , valueStart = xBin
+                        , valueEnd = xBin + Scale.bandwidth xData.bandScale
                         }
                 in
                 ( ( xScaled
@@ -385,13 +436,13 @@ toPoints x maybeYZ yzPoints =
                     points =
                         yzPoints
                             |> List.map
-                                (\( datum, value, ( high, low ) ) ->
+                                (\( datum, value, ( low, high ) ) ->
                                     { datum = datum
                                     , value = value
                                     , missing = yz.toValue datum x == Nothing
                                     , valueScaled = Scale.convert yz.scale value
-                                    , stackedStart = Scale.convert yz.scale high
-                                    , stackedEnd = Scale.convert yz.scale low
+                                    , valueStart = Scale.convert yz.scale high
+                                    , valueEnd = Scale.convert yz.scale low
                                     }
                                 )
                 in
@@ -522,7 +573,7 @@ defaultAxisAttributes =
     { label = Nothing
     , defaultValue = 0.0
     , format = String.fromFloat
-    , safety = 0.25
+    , safety = 0.1
     , ticks = 10
     , scale = Linear
     , stackType = NoStack
@@ -620,31 +671,13 @@ toStackedData props =
                 , order = identity
                 , data = List.map (\( a, _, xs ) -> ( a, xs )) dataWithValues
                 }
-
-        safeExtent : ( Float, Float )
-        safeExtent =
-            case Tuple.mapBoth ceiling ceiling stack.extent of
-                ( 0, 0 ) ->
-                    ( 0.0, 100.0 )
-
-                _ ->
-                    safeBounds props.axisConfig.safety stack.extent
-
-        scale : Scale.ContinuousScale Float
-        scale =
-            case props.axisConfig.scale of
-                Linear ->
-                    Scale.linear ( props.spacings.chart.height, 0 ) safeExtent
-
-                Logarithmic base ->
-                    Scale.log base ( props.spacings.chart.height, 0 ) safeExtent
     in
     { data = props.axisData.data
     , bandData = List.map2 Tuple.pair stack.labels stack.values
     , toLabel = props.axisData.toLabel
     , toColor = props.axisData.toColor
     , toValue = props.axisData.toValue
-    , scale = scale
+    , scale = toScaleFn props.spacings props.axisConfig stack.extent
     , stack = stack
     , values =
         List.map2
@@ -876,6 +909,30 @@ viewHtml attrs children =
 
 
 ---
+
+
+attrAnimationDelayX : Spacings -> Float -> Svg.Attribute msg
+attrAnimationDelayX spacings xScaled =
+    let
+        -- This percentage based on both X and Y creates an offset
+        -- that makes points on the lower left appear sooner
+        -- than points on the upper right
+        pct : Float
+        pct =
+            xScaled / spacings.chart.width
+
+        -- Controls the max offset
+        -- The faster points will have 0.0 offset and
+        -- the lowest points will be offset by this amount
+        maxDelay : Float
+        maxDelay =
+            0.3
+
+        delay : Float
+        delay =
+            maxDelay * pct
+    in
+    SA.style ("animation-delay:" ++ String.fromFloat delay ++ "s")
 
 
 attrAnimationDelay : Spacings -> Float -> Float -> Svg.Attribute msg

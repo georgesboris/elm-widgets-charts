@@ -1,10 +1,41 @@
 module W.Svg.Attributes exposing
-    ( dropShadow
+    ( classList
+    , cond
+    , dropShadow
     , filterDropShadow
     )
 
 import Svg
 import Svg.Attributes
+
+
+none : Svg.Attribute msg
+none =
+    Svg.Attributes.class ""
+
+
+classList : List ( String, Bool ) -> Svg.Attribute msg
+classList xs =
+    xs
+        |> List.foldl
+            (\( class, predicate ) acc ->
+                if predicate then
+                    acc ++ " " ++ class
+
+                else
+                    acc
+            )
+            ""
+        |> Svg.Attributes.class
+
+
+cond : Bool -> Svg.Attribute msg -> Svg.Attribute msg
+cond predicate attr =
+    if predicate then
+        attr
+
+    else
+        none
 
 
 dropShadow :

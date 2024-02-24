@@ -67,6 +67,6 @@ view fn d =
                                     ]
                                 ]
                         )
-                    |> W.Chart.Internal.viewTranslateChart d.spacings
+                    |> S.g []
             )
         |> Result.withDefault (H.text "")

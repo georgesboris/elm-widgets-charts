@@ -1,11 +1,16 @@
 {
     "type": "package",
-    "name": "georgesboris/elm-html-package-template",
-    "summary": "TODO: Write the summary for your package here.",
+    "name": "georgesboris/elm-widgets-charts",
+    "summary": "Create interactive, stateless charts themed through elm-widgets",
     "license": "MPL-2.0",
     "version": "1.0.0",
     "exposed-modules": [
-        "W.Chart"
+        "Attr",
+        "W.Chart",
+        "W.Chart.Bar",
+        "W.Chart.Bubble",
+        "W.Chart.Line",
+        "W.Chart.Widget"
     ],
     "elm-version": "0.19.0 <= v < 0.20.0",
     "dependencies": {
@@ -15,6 +20,7 @@
         "elm-community/typed-svg": "7.0.0 <= v < 8.0.0",
         "folkertdev/one-true-path-experiment": "6.0.0 <= v < 7.0.0",
         "gampleman/elm-visualization": "2.3.0 <= v < 3.0.0",
+        "georgesboris/elm-attributes": "1.0.0 <= v < 2.0.0",
         "ianmackenzie/elm-geometry": "3.11.0 <= v < 4.0.0",
         "ianmackenzie/elm-units": "2.10.0 <= v < 3.0.0",
         "uncover-co/elm-theme": "2.0.0 <= v < 3.0.0",

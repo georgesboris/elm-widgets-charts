@@ -12,6 +12,7 @@ import Svg.Attributes
 import TypedSvg as S
 import TypedSvg.Attributes as SA
 import TypedSvg.Attributes.InPx as SAP
+import TypedSvg.Types as ST
 import VoronoiDiagram2d
 import W.Chart.Internal
 
@@ -31,26 +32,27 @@ view fn d =
 
         boundingBox : BoundingBox2d.BoundingBox2d Pixels.Pixels Float
         boundingBox =
-            BoundingBox2d.from (Point2d.pixels 0 0) (Point2d.pixels d.spacings.chart.width d.spacings.chart.height)
+            BoundingBox2d.from
+                (Point2d.pixels 0 0)
+                (Point2d.pixels d.spacings.chart.width d.spacings.chart.height)
     in
     voronoiResult
         |> Result.map (VoronoiDiagram2d.polygons boundingBox)
         |> Result.map
             (\polygons ->
                 polygons
-                    |> List.map
-                        (\( ( xy, data ), polygon ) ->
-                            S.g []
-                                [ S.polygon
-                                    [ SA.class [ "ew-charts--hover-target" ]
-                                    , polygon
-                                        |> Polygon2d.vertices
-                                        |> List.map (Point2d.toTuple Pixels.toFloat)
-                                        |> SA.points
-                                    , Svg.Attributes.fill "transparent"
-                                    ]
-                                    []
-                                , S.g
+                    |> List.foldl
+                        (\( ( xy, data ), polygon ) acc ->
+                            S.polygon
+                                [ SA.class [ "ew-charts--hover-target" ]
+                                , polygon
+                                    |> Polygon2d.vertices
+                                    |> List.map (Point2d.toTuple Pixels.toFloat)
+                                    |> SA.points
+                                , Svg.Attributes.fill "transparent"
+                                ]
+                                []
+                                :: S.g
                                     [ SA.class [ "ew-charts--hover" ] ]
                                     [ fn xy data
                                     , if d.attrs.debug then
@@ -65,8 +67,9 @@ view fn d =
                                       else
                                         H.text ""
                                     ]
-                                ]
+                                :: acc
                         )
+                        []
                     |> S.g []
             )
         |> Result.withDefault (H.text "")

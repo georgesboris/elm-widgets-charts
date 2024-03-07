@@ -18,6 +18,7 @@ module W.Chart.Bubble exposing
 
 -}
 
+import Dict
 import Html as H
 import Scale
 import Svg
@@ -41,12 +42,12 @@ import W.Svg.Circle
 viewY :
     List (Attribute msg x y z)
     -> { toRadius : x -> ( y, Float ) -> Float }
-    -> W.Chart.Internal.Widget msg x y z { datasets | yData : () }
+    -> W.Chart.Internal.Widget msg x y z
 viewY attrs_ props =
     attrs_
         |> applyAttrs AttributesY
         |> toAttrsY
-        |> Maybe.map (view .y W.Chart.Widget.withHoverY props)
+        |> Maybe.map (view .y .ys W.Chart.Widget.withHoverY props)
         |> Maybe.withDefault W.Chart.Widget.empty
 
 
@@ -54,12 +55,12 @@ viewY attrs_ props =
 viewZ :
     List (Attribute msg x y z)
     -> { toRadius : x -> ( z, Float ) -> Float }
-    -> W.Chart.Internal.Widget msg x y z { datasets | zData : () }
+    -> W.Chart.Internal.Widget msg x y z
 viewZ attrs_ props =
     attrs_
         |> applyAttrs AttributesZ
         |> toAttrsZ
-        |> Maybe.map (view .z W.Chart.Widget.withHoverZ props)
+        |> Maybe.map (view .z .zs W.Chart.Widget.withHoverZ props)
         |> Maybe.withDefault W.Chart.Widget.empty
 
 
@@ -69,6 +70,7 @@ viewZ attrs_ props =
 
 view :
     (W.Chart.Internal.RenderDataFull msg x y z -> Maybe (W.Chart.Internal.RenderDataYZ x a))
+    -> (W.Chart.Internal.ChartPoint x y z -> List (W.Chart.Internal.DataPoint a))
     ->
         ((W.Chart.Internal.RenderDataFull msg x y z
           -> W.Chart.Internal.RenderDataYZ x a
@@ -76,13 +78,13 @@ view :
           -> List (W.Chart.Internal.DataPoint a)
           -> Svg.Svg msg
          )
-         -> W.Chart.Internal.Widget msg x y z datasets
-         -> W.Chart.Internal.Widget msg x y z datasets
+         -> W.Chart.Internal.Widget msg x y z
+         -> W.Chart.Internal.Widget msg x y z
         )
     -> { toRadius : x -> ( a, Float ) -> Float }
     -> AttributesYZ msg x a
-    -> W.Chart.Internal.Widget msg x y z datasets
-view toYZ withHover props attrs =
+    -> W.Chart.Internal.Widget msg x y z
+view toYZ toYZPoints withHover props attrs =
     W.Chart.Widget.fromX
         (\(W.Chart.Internal.RenderData d) ->
             toYZ d
@@ -94,18 +96,40 @@ view toYZ withHover props attrs =
                                 toBubbleData
                                     { data = d
                                     , yzData = yzData
+                                    , toYZPoints = toYZPoints
                                     , toRadius = props.toRadius
                                     }
                         in
                         bubbleData.points
                             |> List.map
                                 (\point ->
+                                    let
+                                        color : String
+                                        color =
+                                            attrs.toColor
+                                                { x = point.x
+                                                , yz = point.yz
+                                                , yzDomain = Scale.domain yzData.scale
+                                                , yzColor = yzData.toColor point.yz.datum
+                                                , radius = point.radius
+                                                , radiusDomain = bubbleData.radiusDomain
+                                                }
+                                    in
                                     S.g
                                         [ W.Chart.Internal.attrTransformOrigin point.x.valueScaled point.yz.valueScaled
                                         , W.Chart.Internal.attrAnimationDelay d.spacings point.x.valueScaled point.yz.valueScaled
                                         , SA.class [ "ew-charts--animate-scale" ]
                                         ]
-                                        [ viewBubble [] yzData attrs bubbleData point
+                                        [ W.Svg.Circle.view
+                                            [ Svg.Attributes.fill Theme.baseBackground
+                                            , SA.fillOpacity (ST.Opacity 0.6)
+                                            , Svg.Attributes.stroke color
+                                            , Svg.Attributes.fill color
+                                            ]
+                                            { x = point.x.valueScaled
+                                            , y = point.yz.valueStart
+                                            , radius = Scale.convert bubbleData.radiusScale point.radius
+                                            }
                                         ]
                                 )
                             |> S.g []
@@ -120,11 +144,12 @@ view toYZ withHover props attrs =
                         toBubbleData
                             { data = d
                             , yzData = yzData
+                            , toYZPoints = toYZPoints
                             , toRadius = props.toRadius
                             }
                 in
                 yzPoints
-                    |> List.map
+                    |> List.concatMap
                         (\yzPoint ->
                             let
                                 color : String
@@ -137,23 +162,36 @@ view toYZ withHover props attrs =
                                         , radius = props.toRadius xPoint.datum ( yzPoint.datum, yzPoint.value )
                                         , radiusDomain = bubbleData.radiusDomain
                                         }
+
+                                radius : Float
+                                radius =
+                                    props.toRadius xPoint.datum ( yzPoint.datum, yzPoint.value )
+                                        |> Scale.convert bubbleData.radiusScale
                             in
-                            viewBubble
-                                [ SA.opacity (ST.Opacity 0.5)
+                            [ W.Svg.Circle.view
+                                [ Svg.Attributes.stroke color
+                                , Svg.Attributes.fill color
+                                , SA.fillOpacity (ST.Opacity 0.6)
                                 , W.Svg.Attributes.dropShadow
                                     { xOffset = 0
                                     , yOffset = 0
-                                    , radius = 4.0
+                                    , radius = 8.0
                                     , color = color
                                     }
                                 ]
-                                yzData
-                                attrs
-                                bubbleData
-                                { x = xPoint
-                                , yz = yzPoint
-                                , radius = props.toRadius xPoint.datum ( yzPoint.datum, yzPoint.value )
+                                { x = xPoint.valueScaled
+                                , y = yzPoint.valueStart
+                                , radius = radius
                                 }
+                            , W.Svg.Circle.view
+                                [ Svg.Attributes.fill "transparent"
+                                , Svg.Attributes.stroke Theme.baseBackground
+                                ]
+                                { x = xPoint.valueScaled
+                                , y = yzPoint.valueStart
+                                , radius = radius + 2
+                                }
+                            ]
                         )
                     |> S.g []
             )
@@ -192,7 +230,7 @@ viewBubble svgAttrs yzData attrs bubbleData point =
                ]
         )
         { x = point.x.valueScaled
-        , y = point.yz.valueScaled
+        , y = point.yz.valueStart
         , radius = Scale.convert bubbleData.radiusScale point.radius
         }
 
@@ -274,6 +312,7 @@ toAttrsZ attrs =
 toBubbleData :
     { data : W.Chart.Internal.RenderDataFull msg x y z
     , yzData : W.Chart.Internal.RenderDataYZ x a
+    , toYZPoints : W.Chart.Internal.ChartPoint x y z -> List (W.Chart.Internal.DataPoint a)
     , toRadius : x -> ( a, Float ) -> Float
     }
     -> BubbleData x a
@@ -294,39 +333,22 @@ toBubbleData props =
                 , radius : Float
                 }
         points =
-            props.data.x.data
+            props.data.points.byX
+                |> Dict.values
                 |> List.map
-                    (\x ->
-                        let
-                            xScaled : Float
-                            xScaled =
-                                Scale.convert props.data.x.scale x
-                        in
-                        props.yzData.data
+                    (\xData ->
+                        props.toYZPoints xData
                             |> List.filterMap
-                                (\y ->
-                                    props.yzData.toValue y x
-                                        |> Maybe.map
-                                            (\yValue ->
-                                                { x =
-                                                    { datum = x
-                                                    , missing = False
-                                                    , value = xScaled
-                                                    , valueScaled = xScaled
-                                                    , valueStart = 0
-                                                    , valueEnd = 0
-                                                    }
-                                                , yz =
-                                                    { datum = y
-                                                    , missing = False
-                                                    , value = yValue
-                                                    , valueScaled = Scale.convert props.yzData.scale yValue
-                                                    , valueStart = 0
-                                                    , valueEnd = 0
-                                                    }
-                                                , radius = props.toRadius x ( y, yValue )
-                                                }
-                                            )
+                                (\yzData ->
+                                    if yzData.missing then
+                                        Nothing
+
+                                    else
+                                        Just
+                                            { x = xData.x
+                                            , yz = yzData
+                                            , radius = props.toRadius xData.x.datum ( yzData.datum, yzData.value )
+                                            }
                                 )
                     )
                 |> List.concat

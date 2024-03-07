@@ -1,27 +1,46 @@
 module W.Chart exposing
-    ( config, view, globalStyles, Widget
-    , width, ratio, padding, background, noTooltip, tooltipByNearest, binPaddingInner, binPaddingOuter, htmlAttrs, ChartAttribute, Config
-    , withY, withYList, withZ, withZList
+    ( globalStyles, config, Config
+    , withX, withY, withYList, withZ, withZList
+    , view, Widget
+    , width, ratio, padding, background, htmlAttrs, ChartAttribute
+    , binPaddingInner, binPaddingOuter
+    , withHover, noTooltip, groupByXY, DataPoint
     , axisLabel, defaultValue, format, noAxisLine, noGridLines, safety, stacked, stackedRelative, ticks, AxisAttribute
     , debug
+    , onClickY, onClickYZ, onClickZ, onHoverY, onHoverYZ, onHoverZ
     )
 
 {-|
 
 
-# Datasets
+# Setup
 
-@docs config, view, globalStyles, Widget
-
-
-# Configuration
-
-@docs width, ratio, padding, background, noTooltip, tooltipByNearest, binPaddingInner, binPaddingOuter, htmlAttrs, ChartAttribute, Config
+@docs globalStyles, config, Config
 
 
 # Datasets
 
-@docs withY, withYList, withZ, withZList
+@docs withX, withY, withYList, withZ, withZList
+
+
+# Widgets
+
+@docs view, Widget
+
+
+# Styles
+
+@docs width, ratio, padding, background, htmlAttrs, ChartAttribute
+
+
+# Bins
+
+@docs binPaddingInner, binPaddingOuter
+
+
+# Interaction
+
+@docs withHover, noTooltip, groupByXY, DataPoint
 
 
 # Axis
@@ -55,13 +74,22 @@ import W.Chart.Tooltip
 
 
 {-| -}
-type alias Config msg x y z datasets =
-    W.Chart.Internal.Config msg x y z datasets
+type alias Config msg x y z =
+    W.Chart.Internal.Config msg x y z
 
 
 {-| -}
-type alias Widget msg x y z datasets =
-    W.Chart.Internal.Widget msg x y z datasets
+type alias DataPoint a =
+    { datum : a
+    , label : String
+    , color : String
+    , value : Float
+    }
+
+
+{-| -}
+type alias Widget msg x y z =
+    W.Chart.Internal.Widget msg x y z
 
 
 {-| -}
@@ -72,6 +100,11 @@ type alias ChartAttribute msg =
 {-| -}
 type alias AxisAttribute =
     Attr.Attr W.Chart.Internal.AxisAttributes
+
+
+{-| -}
+type alias HoverAttribute msg x y z =
+    Attr.Attr (W.Chart.Internal.HoverAttrs msg x y z)
 
 
 
@@ -93,26 +126,16 @@ labelFontSize =
 
 
 {-| -}
-config :
-    List (ChartAttribute msg)
-    ->
-        { data : List x
-        , toLabel : x -> String
-        }
-    -> W.Chart.Internal.Config msg x y z {}
+config : List (ChartAttribute msg) -> W.Chart.Internal.Config msg x y z
 config =
     Attr.withAttrs W.Chart.Internal.defaultAttrs
-        (\attrs axisData ->
+        (\attrs ->
             W.Chart.Internal.Config
                 { attrs = attrs
+                , hover = Nothing
                 , yData = Nothing
                 , zData = Nothing
-                , xData =
-                    { data = axisData.data
-                    , toLabel = axisData.toLabel
-                    , toColor = \_ -> ""
-                    , toValue = \_ _ -> Nothing
-                    }
+                , xData = Nothing
                 }
         )
 
@@ -158,18 +181,6 @@ background v =
 
 
 {-| -}
-noTooltip : ChartAttribute msg
-noTooltip =
-    Attr.attr (\a -> { a | hoverTarget = Nothing })
-
-
-{-| -}
-tooltipByNearest : ChartAttribute msg
-tooltipByNearest =
-    Attr.attr (\a -> { a | hoverTarget = Just W.Chart.Internal.NearestPoint })
-
-
-{-| -}
 htmlAttrs : List (H.Attribute msg) -> ChartAttribute msg
 htmlAttrs v =
     Attr.attr (\a -> { a | htmlAttributes = v })
@@ -182,7 +193,206 @@ debug =
 
 
 
+-- Tooltips
+
+
+defaultTooltipAttributes : W.Chart.Internal.HoverAttrs msg x y z
+defaultTooltipAttributes =
+    { nearest = False
+    , tooltip = True
+    , onClick = Nothing
+    , onHover = Nothing
+    , custom = []
+    }
+
+
+{-| -}
+withHover : List (HoverAttribute msg x y z) -> Config msg x y z -> Config msg x y z
+withHover =
+    Attr.withAttrs defaultTooltipAttributes
+        (\tooltipAttrs (W.Chart.Internal.Config cfg) ->
+            W.Chart.Internal.Config { cfg | hover = Just tooltipAttrs }
+        )
+
+
+toDataPoint : W.Chart.Internal.DataPoint a -> DataPoint a
+toDataPoint dp =
+    { datum = dp.datum
+    , label = "TODO"
+    , color = "black"
+    , value = dp.value
+    }
+
+
+{-| -}
+onClickY : ({ x : DataPoint x, y : List (DataPoint y) } -> msg) -> HoverAttribute msg x y z
+onClickY fn =
+    Attr.attr
+        (\a ->
+            { a
+                | onClick =
+                    Just
+                        (\point ->
+                            fn
+                                { x = toDataPoint point.x
+                                , y = List.map toDataPoint point.ys
+                                }
+                        )
+            }
+        )
+
+
+{-| -}
+onClickZ : ({ x : DataPoint x, z : List (DataPoint z) } -> msg) -> HoverAttribute msg x y z
+onClickZ fn =
+    Attr.attr
+        (\a ->
+            { a
+                | onClick =
+                    Just
+                        (\point ->
+                            fn
+                                { x = toDataPoint point.x
+                                , z = List.map toDataPoint point.zs
+                                }
+                        )
+            }
+        )
+
+
+{-| -}
+onClickYZ : ({ x : DataPoint x, y : List (DataPoint y), z : List (DataPoint z) } -> msg) -> HoverAttribute msg x y z
+onClickYZ fn =
+    Attr.attr
+        (\a ->
+            { a
+                | onClick =
+                    Just
+                        (\point ->
+                            fn
+                                { x = toDataPoint point.x
+                                , y = List.map toDataPoint point.ys
+                                , z = List.map toDataPoint point.zs
+                                }
+                        )
+            }
+        )
+
+
+{-| -}
+onHoverY : (Maybe { x : DataPoint x, y : List (DataPoint y) } -> msg) -> HoverAttribute msg x y z
+onHoverY fn =
+    Attr.attr
+        (\a ->
+            { a
+                | onHover =
+                    Just
+                        (\maybePoint ->
+                            maybePoint
+                                |> Maybe.map
+                                    (\point ->
+                                        { x = toDataPoint point.x
+                                        , y = List.map toDataPoint point.ys
+                                        }
+                                    )
+                                |> fn
+                        )
+            }
+        )
+
+
+{-| -}
+onHoverZ : (Maybe { x : DataPoint x, z : List (DataPoint z) } -> msg) -> HoverAttribute msg x y z
+onHoverZ fn =
+    Attr.attr
+        (\a ->
+            { a
+                | onHover =
+                    Just
+                        (\maybePoint ->
+                            maybePoint
+                                |> Maybe.map
+                                    (\point ->
+                                        { x = toDataPoint point.x
+                                        , z = List.map toDataPoint point.zs
+                                        }
+                                    )
+                                |> fn
+                        )
+            }
+        )
+
+
+{-| -}
+onHoverYZ : (Maybe { x : DataPoint x, y : List (DataPoint y), z : List (DataPoint z) } -> msg) -> HoverAttribute msg x y z
+onHoverYZ fn =
+    Attr.attr
+        (\a ->
+            { a
+                | onHover =
+                    Just
+                        (\maybePoint ->
+                            maybePoint
+                                |> Maybe.map
+                                    (\point ->
+                                        { x = toDataPoint point.x
+                                        , y = List.map toDataPoint point.ys
+                                        , z = List.map toDataPoint point.zs
+                                        }
+                                    )
+                                |> fn
+                        )
+            }
+        )
+
+
+{-| -}
+noTooltip : HoverAttribute msg x y z
+noTooltip =
+    Attr.attr (\a -> { a | tooltip = False })
+
+
+{-| -}
+groupByXY : HoverAttribute msg x y z
+groupByXY =
+    Attr.attr (\a -> { a | nearest = True })
+
+
+
 -- Datasets
+
+
+{-| -}
+withX :
+    List AxisAttribute
+    ->
+        { data : List x
+        , toLabel : x -> String
+        }
+    -> Config msg x y z
+    -> Config msg x y z
+withX =
+    Attr.withAttrs W.Chart.Internal.defaultAxisAttributes
+        (\axisAttrs axisData (W.Chart.Internal.Config cfg) ->
+            let
+                attrs : W.Chart.Internal.Attributes msg
+                attrs =
+                    cfg.attrs
+            in
+            W.Chart.Internal.Config
+                { attrs = { attrs | xAxis = axisAttrs }
+                , hover = cfg.hover
+                , yData = cfg.yData
+                , zData = cfg.zData
+                , xData =
+                    Just
+                        { data = axisData.data
+                        , toLabel = axisData.toLabel
+                        , toColor = \_ -> ""
+                        , toValue = \_ _ -> Nothing
+                        }
+                }
+        )
 
 
 {-| -}
@@ -193,8 +403,8 @@ withY :
         , color : String
         , toValue : x -> Maybe Float
         }
-    -> Config msg x any z datasets
-    -> Config msg x () z { datasets | yData : () }
+    -> Config msg x any z
+    -> Config msg x () z
 withY =
     Attr.withAttrs W.Chart.Internal.defaultAxisAttributes
         (\axisAttrs axisData (W.Chart.Internal.Config cfg) ->
@@ -205,6 +415,7 @@ withY =
             in
             W.Chart.Internal.Config
                 { attrs = { attrs | yAxis = axisAttrs }
+                , hover = Nothing
                 , xData = cfg.xData
                 , zData = cfg.zData
                 , yData =
@@ -227,8 +438,8 @@ withYList :
         , toColor : y -> String
         , toValue : y -> x -> Maybe Float
         }
-    -> Config msg x any z datasets
-    -> Config msg x y z { datasets | yData : () }
+    -> Config msg x y z
+    -> Config msg x y z
 withYList =
     Attr.withAttrs W.Chart.Internal.defaultAxisAttributes
         (\axisAttrs axisData (W.Chart.Internal.Config cfg) ->
@@ -239,6 +450,7 @@ withYList =
             in
             W.Chart.Internal.Config
                 { attrs = { attrs | yAxis = axisAttrs }
+                , hover = cfg.hover
                 , xData = cfg.xData
                 , zData = cfg.zData
                 , yData = Just axisData
@@ -254,8 +466,8 @@ withZ :
         , color : String
         , toValue : x -> Maybe Float
         }
-    -> Config msg x y any datasets
-    -> Config msg x y () { datasets | zData : () }
+    -> Config msg x y ()
+    -> Config msg x y ()
 withZ =
     Attr.withAttrs W.Chart.Internal.defaultAxisAttributes
         (\axisAttrs axisData (W.Chart.Internal.Config cfg) ->
@@ -266,6 +478,7 @@ withZ =
             in
             W.Chart.Internal.Config
                 { attrs = { attrs | zAxis = axisAttrs }
+                , hover = cfg.hover
                 , xData = cfg.xData
                 , yData = cfg.yData
                 , zData =
@@ -288,8 +501,8 @@ withZList :
         , toColor : z -> String
         , toValue : z -> x -> Maybe Float
         }
-    -> Config msg x y any datasets
-    -> Config msg x y z { datasets | zData : () }
+    -> Config msg x y z
+    -> Config msg x y z
 withZList =
     Attr.withAttrs W.Chart.Internal.defaultAxisAttributes
         (\axisAttrs axisData (W.Chart.Internal.Config cfg) ->
@@ -300,6 +513,7 @@ withZList =
             in
             W.Chart.Internal.Config
                 { attrs = { attrs | zAxis = axisAttrs }
+                , hover = cfg.hover
                 , xData = cfg.xData
                 , yData = cfg.yData
                 , zData = Just axisData
@@ -377,50 +591,55 @@ noGridLines =
 
 
 {-| -}
-view : List (W.Chart.Internal.Widget msg x y z datasets) -> Config msg x y z datasets -> H.Html msg
-view widgets cfg =
-    let
-        renderData : RenderData msg x y z datasets
-        renderData =
-            W.Chart.Internal.toRenderData cfg
+view : List (W.Chart.Internal.Widget msg x y z) -> Config msg x y z -> H.Html msg
+view widgets (W.Chart.Internal.Config cfg) =
+    cfg.xData
+        |> Maybe.map
+            (\xData ->
+                let
+                    renderData : RenderData msg x y z
+                    renderData =
+                        W.Chart.Internal.toRenderData cfg xData
 
-        (W.Chart.Internal.RenderData d) =
-            renderData
-    in
-    H.div
-        [ HA.class "ew-charts"
-        , HA.classList
-            [ ( "m--unfocus", True || d.attrs.hoverFocus && d.attrs.hoverTarget /= Nothing )
-            , ( "m--debug", d.attrs.debug )
-            ]
-        ]
-        [ Svg.svg
-            [ SA.viewBox 0 0 d.spacings.canvas.width d.spacings.canvas.height
-            , SA.class [ "ew-charts--svg" ]
-            ]
-            [ -- Grid
-              W.Chart.Internal.viewTranslateChart d.spacings
-                [ viewYGrid renderData
-                , viewXGrid renderData
-                ]
+                    (W.Chart.Internal.RenderData d) =
+                        renderData
+                in
+                H.div
+                    [ HA.class "ew-charts"
+                    , HA.classList
+                        [ ( "m--unfocus", True || cfg.hover /= Nothing )
+                        , ( "m--debug", d.attrs.debug )
+                        ]
+                    ]
+                    [ Svg.svg
+                        [ SA.viewBox 0 0 d.spacings.canvas.width d.spacings.canvas.height
+                        , SA.class [ "ew-charts--svg" ]
+                        ]
+                        [ -- Grid
+                          W.Chart.Internal.viewTranslateChart d.spacings
+                            [ viewYGrid renderData
+                            , viewXGrid renderData
+                            ]
 
-            -- Labels
-            , viewLabels renderData
+                        -- Labels
+                        , viewLabels renderData
 
-            -- Axis
-            , viewXAxis renderData
-            , viewYAxis renderData
-            , viewZAxis renderData
+                        -- Axis
+                        , viewXAxis renderData
+                        , viewYAxis renderData
+                        , viewZAxis renderData
 
-            -- Elements & Hover
-            , W.Chart.Internal.viewTranslateChart d.spacings
-                [ viewWidgets "bg" .background renderData widgets
-                , viewWidgets "main" .main renderData widgets
-                , viewWidgets "fg" .foreground renderData widgets
-                , viewHover renderData widgets
-                ]
-            ]
-        ]
+                        -- Elements & Hover
+                        , W.Chart.Internal.viewTranslateChart d.spacings
+                            [ viewWidgets "bg" .background renderData widgets
+                            , viewWidgets "main" .main renderData widgets
+                            , viewWidgets "fg" .foreground renderData widgets
+                            , viewHover cfg.hover renderData widgets
+                            ]
+                        ]
+                    ]
+            )
+        |> Maybe.withDefault (H.text "")
 
 
 
@@ -429,9 +648,9 @@ view widgets cfg =
 
 viewWidgets :
     String
-    -> (W.Chart.Internal.WidgetData msg x y z datasets -> Maybe (RenderData msg x y z datasets -> Svg.Svg msg))
-    -> RenderData msg x y z datasets
-    -> List (W.Chart.Internal.Widget msg x y z datasets)
+    -> (W.Chart.Internal.WidgetData msg x y z -> Maybe (RenderData msg x y z -> Svg.Svg msg))
+    -> RenderData msg x y z
+    -> List (W.Chart.Internal.Widget msg x y z)
     -> SC.Svg msg
 viewWidgets class getter renderData widgets =
     widgets
@@ -444,26 +663,29 @@ viewWidgets class getter renderData widgets =
 
 
 viewHover :
-    RenderData msg x y z datasets
-    -> List (W.Chart.Internal.Widget msg x y z datasets)
+    Maybe (W.Chart.Internal.HoverAttrs msg x y z)
+    -> RenderData msg x y z
+    -> List (W.Chart.Internal.Widget msg x y z)
     -> SC.Svg msg
-viewHover (RenderData d) widgets =
-    case d.attrs.hoverTarget of
-        Just W.Chart.Internal.NearestX ->
-            viewHoverX d widgets
+viewHover maybeHoverAttrs (RenderData d) widgets =
+    maybeHoverAttrs
+        |> Maybe.map
+            (\hoverAttrs ->
+                if hoverAttrs.nearest then
+                    viewHoverNearest hoverAttrs d widgets
 
-        Just W.Chart.Internal.NearestPoint ->
-            viewHoverNearest d widgets
-
-        Nothing ->
-            H.text ""
+                else
+                    viewHoverX hoverAttrs d widgets
+            )
+        |> Maybe.withDefault (H.text "")
 
 
 viewHoverX :
-    W.Chart.Internal.RenderDataFull msg x y z
-    -> List (W.Chart.Internal.Widget msg x y z datasets)
+    W.Chart.Internal.HoverAttrs msg x y z
+    -> W.Chart.Internal.RenderDataFull msg x y z
+    -> List (W.Chart.Internal.Widget msg x y z)
     -> SC.Svg msg
-viewHoverX d widgets =
+viewHoverX hoverAttrs d widgets =
     let
         bandwidth : Float
         bandwidth =
@@ -489,11 +711,15 @@ viewHoverX d widgets =
                 , S.g
                     [ SA.class [ "ew-charts--hover" ] ]
                     [ viewHoverData d widgets xData
-                    , W.Chart.Tooltip.view d
-                        xData.x.valueScaled
-                        0.0
-                        tooltipMargin
-                        [ W.Chart.Tooltip.viewPoints d xData ]
+                    , if hoverAttrs.tooltip then
+                        W.Chart.Tooltip.view d
+                            xData.x.valueScaled
+                            0.0
+                            tooltipMargin
+                            [ W.Chart.Tooltip.viewPoints d xData ]
+
+                      else
+                        H.text ""
                     ]
                 ]
             )
@@ -501,19 +727,24 @@ viewHoverX d widgets =
 
 
 viewHoverNearest :
-    W.Chart.Internal.RenderDataFull msg x y z
-    -> List (W.Chart.Internal.Widget msg x y z datasets)
+    W.Chart.Internal.HoverAttrs msg x y z
+    -> W.Chart.Internal.RenderDataFull msg x y z
+    -> List (W.Chart.Internal.Widget msg x y z)
     -> SC.Svg msg
-viewHoverNearest d widgets =
+viewHoverNearest hoverAttrs d widgets =
     W.Chart.Internal.Voronoi.view
         (\( x, y ) hoverData ->
             S.g []
                 [ viewHoverData d widgets hoverData
-                , W.Chart.Tooltip.view d
-                    x
-                    y
-                    8.0
-                    [ W.Chart.Tooltip.viewPoints d hoverData ]
+                , if hoverAttrs.tooltip then
+                    W.Chart.Tooltip.view d
+                        x
+                        y
+                        8.0
+                        [ W.Chart.Tooltip.viewPoints d hoverData ]
+
+                  else
+                    H.text ""
                 ]
         )
         d
@@ -521,7 +752,7 @@ viewHoverNearest d widgets =
 
 viewHoverData :
     W.Chart.Internal.RenderDataFull msg x y z
-    -> List (W.Chart.Internal.Widget msg x y z datasets)
+    -> List (W.Chart.Internal.Widget msg x y z)
     -> W.Chart.Internal.ChartPoint x y z
     -> SC.Svg msg
 viewHoverData d widgets point =
@@ -566,7 +797,7 @@ viewHoverData d widgets point =
 -- Labels
 
 
-viewLabels : RenderData msg x y z datasets -> SC.Svg msg
+viewLabels : RenderData msg x y z -> SC.Svg msg
 viewLabels (RenderData d) =
     S.g
         []
@@ -635,7 +866,7 @@ viewLabels (RenderData d) =
 --  Axes & Lines
 
 
-viewYGrid : RenderData msg x y z datasets -> SC.Svg msg
+viewYGrid : RenderData msg x y z -> SC.Svg msg
 viewYGrid (RenderData d) =
     case ( d.attrs.yAxis.showGridLines, d.y ) of
         ( True, Just yData ) ->
@@ -663,7 +894,7 @@ viewYGrid (RenderData d) =
             H.text ""
 
 
-viewXGrid : RenderData msg x y z datasets -> SC.Svg msg
+viewXGrid : RenderData msg x y z -> SC.Svg msg
 viewXGrid (RenderData d) =
     case ( d.attrs.yAxis.showGridLines, d.y ) of
         ( True, Just _ ) ->
@@ -691,7 +922,7 @@ viewXGrid (RenderData d) =
             H.text ""
 
 
-viewXAxis : RenderData msg x y z datasets -> SC.Svg msg
+viewXAxis : RenderData msg x y z -> SC.Svg msg
 viewXAxis (RenderData d) =
     if d.attrs.xAxis.showAxis then
         W.Chart.Internal.viewTranslate
@@ -715,7 +946,7 @@ viewXAxis (RenderData d) =
         H.text ""
 
 
-viewYAxis : RenderData msg x y z datasets -> SC.Svg msg
+viewYAxis : RenderData msg x y z -> SC.Svg msg
 viewYAxis (RenderData d) =
     case ( d.attrs.yAxis.showAxis, d.y ) of
         ( True, Just yData ) ->
@@ -738,7 +969,7 @@ viewYAxis (RenderData d) =
             H.text ""
 
 
-viewZAxis : RenderData msg x y z datasets -> SC.Svg msg
+viewZAxis : RenderData msg x y z -> SC.Svg msg
 viewZAxis (RenderData d) =
     case ( d.attrs.zAxis.showAxis, d.z ) of
         ( True, Just zData ) ->
@@ -844,7 +1075,7 @@ globalStyles =
             /* Unfocus */
 
             .ew-charts.m--unfocus:hover .ew-charts--main {
-                filter: grayscale(100%);
+                filter: grayscale(0%);
             }
 
             /* Hover */
@@ -877,6 +1108,7 @@ globalStyles =
                 box-sizing: border-box;
                 font-family: var(--theme-font-text), sans-serif;
                 font-size: 12px;
+                line-height: 1;
             }
             .ew-charts--tooltip.m--align-left {
                 justify-content: flex-end;
@@ -890,7 +1122,6 @@ globalStyles =
             .ew-charts--tooltip-yz--list,
             .ew-charts--tooltip-yz--item {
                 margin: 0;
-                padding: 0;
             }
 
             .ew-charts--tooltip-x,
@@ -908,23 +1139,38 @@ globalStyles =
                 font-size: inherit;
             }
 
-            .ew-charts--tooltip-yz--list {
-                list-style-type: none;
-            }
-
             .ew-charts--tooltip-yz {
                 border-top: 1px solid """ ++ Theme.baseAuxWithAlpha 0.1 ++ """;
+                padding: 0 4px;
             }
+
             .ew-charts--tooltip-yz--label {
-                padding-bottom: 4px;
+                padding: 4px 0;
+            }
+
+            .ew-charts--tooltip-yz--list {
+                list-style-type: none;
+                margin: 0;
+                padding: 0;
             }
 
             .ew-charts--tooltip-yz--item {
                 display: flex;
+                align-items: center;
                 justify-content: space-between;
-                gap: 8px;
+                gap: 4px;
+                padding: 2px 0;
+                margin: 0;
             }
-            .ew-charts--tooltip-yz--item-label {}
+            .ew-charts--tooltip-yz--item-color {
+                height: 8px;
+                width: 8px;
+                border-radius: 2px;
+            }
+            .ew-charts--tooltip-yz--item-label {
+                flex-grow: 1;
+                padding: 0 8px 0 2px;
+            }
             .ew-charts--tooltip-yz--item-value {}
 
             /* Axis & Labels */

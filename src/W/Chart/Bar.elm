@@ -10,6 +10,7 @@ import Dict
 import Html as H
 import Scale
 import Svg.Attributes
+import Theme
 import TypedSvg as S
 import TypedSvg.Attributes.InPx as SAP
 import TypedSvg.Core as SC
@@ -19,9 +20,9 @@ import W.Svg.Attributes
 
 
 {-| -}
-yBars : W.Chart.Internal.Widget msg x y z { datasets | yData : () }
+yBars : W.Chart.Internal.Widget msg x y z
 yBars =
-    W.Chart.Widget.fromY (viewBars .y .ys (.attrs >> .yAxis))
+    W.Chart.Widget.fromY (viewBars toBarsDataY .y .y .ys (.attrs >> .yAxis))
         |> W.Chart.Widget.withHoverY
             (\d yData xPoint yPoints ->
                 viewHover d xPoint (Just ( yData, yPoints )) Nothing
@@ -29,9 +30,9 @@ yBars =
 
 
 {-| -}
-zBars : W.Chart.Internal.Widget msg x y z { datasets | zData : () }
+zBars : W.Chart.Internal.Widget msg x y z
 zBars =
-    W.Chart.Widget.fromZ (viewBars .z .zs (.attrs >> .zAxis))
+    W.Chart.Widget.fromZ (viewBars toBarsDataZ .z .z .zs (.attrs >> .zAxis))
         |> W.Chart.Widget.withHoverZ
             (\d zData xPoint zPoints ->
                 viewHover d xPoint Nothing (Just ( zData, zPoints ))
@@ -39,7 +40,7 @@ zBars =
 
 
 {-| -}
-yzBars : W.Chart.Internal.Widget msg x y z { datasets | yData : (), zData : () }
+yzBars : W.Chart.Internal.Widget msg x y z
 yzBars =
     W.Chart.Widget.fromYZ viewMixedBars
         |> W.Chart.Widget.withHoverYZ
@@ -55,44 +56,74 @@ yzBars =
 -- Helpers
 
 
-viewHover :
+type alias AxisData a =
+    { zero : Float
+    , vScaled : W.Chart.Internal.DataPoint a -> Float
+    , xOffset : a -> Float
+    }
+
+
+type alias BarsData y z =
+    { barWidth : Float
+    , y : AxisData y
+    , z : AxisData z
+    }
+
+
+toBarsDataY : W.Chart.Internal.RenderDataFull msg x y z -> BarsData y z
+toBarsDataY renderData =
+    toBarsData renderData renderData.y Nothing
+
+
+toBarsDataZ : W.Chart.Internal.RenderDataFull msg x y z -> BarsData y z
+toBarsDataZ renderData =
+    toBarsData renderData Nothing renderData.z
+
+
+toBarsData :
     W.Chart.Internal.RenderDataFull msg x y z
-    -> W.Chart.Internal.DataPoint x
-    -> Maybe ( W.Chart.Internal.RenderDataYZ x y, List (W.Chart.Internal.DataPoint y) )
-    -> Maybe ( W.Chart.Internal.RenderDataYZ x z, List (W.Chart.Internal.DataPoint z) )
-    -> SC.Svg msg
-viewHover renderData xPoint maybeYPoints maybeZPoints =
+    -> Maybe (W.Chart.Internal.RenderDataYZ x y)
+    -> Maybe (W.Chart.Internal.RenderDataYZ x z)
+    -> BarsData y z
+toBarsData renderData maybeYData maybeZData =
     let
+        yStacked : Bool
+        yStacked =
+            renderData.attrs.yAxis.stackType /= W.Chart.Internal.NoStack
+
+        zStacked : Bool
+        zStacked =
+            renderData.attrs.zAxis.stackType /= W.Chart.Internal.NoStack
+
         yBinsCount : Int
         yBinsCount =
-            maybeYPoints
+            maybeYData
                 |> Maybe.map
-                    (\( yData, _ ) ->
-                        if renderData.attrs.yAxis.stackType == W.Chart.Internal.NoStack then
-                            List.length yData.data
+                    (\yData ->
+                        if yStacked then
+                            1
 
                         else
-                            1
+                            List.length yData.data
                     )
                 |> Maybe.withDefault 0
 
         zBinsCount : Int
         zBinsCount =
-            maybeZPoints
+            maybeZData
                 |> Maybe.map
-                    (\( zData, _ ) ->
-                        if renderData.attrs.zAxis.stackType == W.Chart.Internal.NoStack then
-                            List.length zData.data
+                    (\zData ->
+                        if zStacked then
+                            1
 
                         else
-                            1
+                            List.length zData.data
                     )
                 |> Maybe.withDefault 0
 
         binsCount : Int
         binsCount =
-            yBinsCount
-                + zBinsCount
+            yBinsCount + zBinsCount
 
         binScale : Scale.BandScale Int
         binScale =
@@ -104,17 +135,166 @@ viewHover renderData xPoint maybeYPoints maybeZPoints =
                 ( 0, Scale.bandwidth renderData.x.bandScale )
                 (List.range 0 (binsCount - 1))
 
-        toX : W.Chart.Internal.StackType -> Int -> Int -> Float
-        toX stackType binsOffset binIndex =
-            if stackType == W.Chart.Internal.NoStack then
-                xPoint.valueStart + Scale.convert binScale (binsOffset + binIndex)
+        yZero : Float
+        yZero =
+            maybeYData
+                |> Maybe.map (\yData -> Scale.convert yData.scale 0.0)
+                |> Maybe.withDefault 0.0
 
-            else
-                xPoint.valueStart
+        yxOffsets : Dict.Dict String Float
+        yxOffsets =
+            maybeYData
+                |> Maybe.map
+                    (\yData ->
+                        yData.data
+                            |> List.indexedMap
+                                (\index y ->
+                                    ( yData.toLabel y
+                                    , if yStacked then
+                                        Scale.convert binScale 0
 
-        width : Float
-        width =
-            Scale.bandwidth binScale
+                                      else
+                                        Scale.convert binScale index
+                                    )
+                                )
+                            |> Dict.fromList
+                    )
+                |> Maybe.withDefault Dict.empty
+
+        zZero : Float
+        zZero =
+            maybeZData
+                |> Maybe.map (\zData -> Scale.convert zData.scale 0.0)
+                |> Maybe.withDefault 0.0
+
+        zxOffsets : Dict.Dict String Float
+        zxOffsets =
+            maybeZData
+                |> Maybe.map
+                    (\zData ->
+                        zData.data
+                            |> List.indexedMap
+                                (\index z ->
+                                    ( zData.toLabel z
+                                    , if zStacked then
+                                        Scale.convert binScale yBinsCount
+
+                                      else
+                                        Scale.convert binScale (index + yBinsCount)
+                                    )
+                                )
+                            |> Dict.fromList
+                    )
+                |> Maybe.withDefault Dict.empty
+    in
+    { barWidth = Scale.bandwidth binScale
+    , y =
+        { zero = yZero
+        , vScaled =
+            \vPoint ->
+                if renderData.attrs.yAxis.stackType == W.Chart.Internal.NoStack && vPoint.valueStart > yZero then
+                    yZero
+
+                else
+                    vPoint.valueStart
+        , xOffset =
+            maybeYData
+                |> Maybe.map
+                    (\yData y ->
+                        Dict.get (yData.toLabel y) yxOffsets
+                            |> Maybe.withDefault 0.0
+                    )
+                |> Maybe.withDefault (\_ -> 0.0)
+        }
+    , z =
+        { zero = zZero
+        , vScaled =
+            \vPoint ->
+                if renderData.attrs.zAxis.stackType == W.Chart.Internal.NoStack && vPoint.valueStart > zZero then
+                    zZero
+
+                else
+                    vPoint.valueStart
+        , xOffset =
+            maybeZData
+                |> Maybe.map
+                    (\zData z ->
+                        Dict.get (zData.toLabel z) zxOffsets
+                            |> Maybe.withDefault 0.0
+                    )
+                |> Maybe.withDefault (\_ -> 0.0)
+        }
+    }
+
+
+viewBar :
+    { isHover : Bool
+    , renderData : W.Chart.Internal.RenderDataFull msg x y z
+    , barsData : BarsData y z
+    , axisData : AxisData a
+    , xPoint : W.Chart.Internal.DataPoint x
+    , yzData : W.Chart.Internal.RenderDataYZ x a
+    , yzConfig : W.Chart.Internal.AxisAttributes
+    }
+    -> W.Chart.Internal.DataPoint a
+    -> SC.Svg msg
+viewBar props yzPoint =
+    let
+        color : String
+        color =
+            props.yzData.toColor yzPoint.datum
+
+        x : Float
+        x =
+            props.xPoint.valueStart + props.axisData.xOffset yzPoint.datum
+
+        bar : SC.Svg msg
+        bar =
+            S.rect
+                [ Svg.Attributes.fill color
+                , SAP.x x
+                , SAP.y (props.axisData.vScaled yzPoint)
+                , SAP.width props.barsData.barWidth
+                , SAP.height (abs (yzPoint.valueStart - yzPoint.valueEnd))
+                , W.Svg.Attributes.cond props.isHover (Svg.Attributes.stroke Theme.baseBackground)
+                , W.Svg.Attributes.cond props.isHover (SAP.strokeWidth 2)
+                , W.Svg.Attributes.cond props.isHover
+                    (W.Svg.Attributes.dropShadow
+                        { xOffset = 0
+                        , yOffset = 0
+                        , radius = 4.0
+                        , color = color
+                        }
+                    )
+                ]
+                []
+    in
+    if props.isHover then
+        bar
+
+    else
+        S.g
+            [ W.Chart.Internal.attrAnimationDelayX props.renderData.spacings x
+            , W.Chart.Internal.attrTransformOrigin x props.barsData.y.zero
+            , Svg.Attributes.class "ew-charts--animate-scale-z"
+            ]
+            [ bar ]
+
+
+viewHover :
+    W.Chart.Internal.RenderDataFull msg x y z
+    -> W.Chart.Internal.DataPoint x
+    -> Maybe ( W.Chart.Internal.RenderDataYZ x y, List (W.Chart.Internal.DataPoint y) )
+    -> Maybe ( W.Chart.Internal.RenderDataYZ x z, List (W.Chart.Internal.DataPoint z) )
+    -> SC.Svg msg
+viewHover renderData xPoint maybeYPoints maybeZPoints =
+    let
+        barsData : BarsData y z
+        barsData =
+            toBarsData
+                renderData
+                (Maybe.map Tuple.first maybeYPoints)
+                (Maybe.map Tuple.first maybeZPoints)
     in
     S.g []
         [ maybeYPoints
@@ -123,13 +303,13 @@ viewHover renderData xPoint maybeYPoints maybeZPoints =
                     viewBinBars
                         { isHover = True
                         , renderData = renderData
-                        , yzPoints = yPoints
+                        , barsData = barsData
+                        , axisData = barsData.y
+                        , xPoint = xPoint
                         , yzData = yData
                         , yzConfig = renderData.attrs.yAxis
-                        , binsOffset = 0
-                        , binWidth = width
-                        , toX = toX
                         }
+                        yPoints
                 )
             |> Maybe.withDefault (H.text "")
         , maybeZPoints
@@ -138,13 +318,13 @@ viewHover renderData xPoint maybeYPoints maybeZPoints =
                     viewBinBars
                         { isHover = True
                         , renderData = renderData
-                        , yzPoints = zPoints
+                        , barsData = barsData
+                        , axisData = barsData.z
+                        , xPoint = xPoint
                         , yzData = zData
                         , yzConfig = renderData.attrs.zAxis
-                        , binsOffset = yBinsCount
-                        , binWidth = width
-                        , toX = toX
                         }
+                        zPoints
                 )
             |> Maybe.withDefault (H.text "")
         ]
@@ -153,142 +333,71 @@ viewHover renderData xPoint maybeYPoints maybeZPoints =
 viewBinBars :
     { isHover : Bool
     , renderData : W.Chart.Internal.RenderDataFull msg x y z
-    , yzPoints : List (W.Chart.Internal.DataPoint a)
+    , barsData : BarsData y z
+    , axisData : AxisData a
+    , xPoint : W.Chart.Internal.DataPoint x
     , yzData : W.Chart.Internal.RenderDataYZ x a
     , yzConfig : W.Chart.Internal.AxisAttributes
-    , binsOffset : Int
-    , binWidth : Float
-    , toX : W.Chart.Internal.StackType -> Int -> Int -> Float
     }
+    -> List (W.Chart.Internal.DataPoint a)
     -> SC.Svg msg
-viewBinBars props =
-    let
-        yzZero : Float
-        yzZero =
-            Scale.convert props.yzData.scale 0.0
-    in
-    props.yzPoints
-        |> List.indexedMap
-            (\binIndex yzPoint ->
-                let
-                    color : String
-                    color =
-                        props.yzData.toColor yzPoint.datum
-
-                    y : Float
-                    y =
-                        if props.yzConfig.stackType == W.Chart.Internal.NoStack && yzPoint.valueStart > yzZero then
-                            yzZero
-
-                        else
-                            yzPoint.valueStart
-
-                    height : Float
-                    height =
-                        abs (yzPoint.valueStart - yzPoint.valueEnd)
-
-                    x : Float
-                    x =
-                        props.toX props.yzConfig.stackType props.binsOffset binIndex
-
-                    bar : SC.Svg msg
-                    bar =
-                        S.rect
-                            [ Svg.Attributes.fill color
-                            , SAP.x (props.toX props.yzConfig.stackType props.binsOffset binIndex)
-                            , SAP.y y
-                            , SAP.width props.binWidth
-                            , SAP.height height
-                            , W.Svg.Attributes.cond props.isHover
-                                (W.Svg.Attributes.dropShadow
-                                    { xOffset = 0
-                                    , yOffset = 0
-                                    , radius = 2.0
-                                    , color = color
-                                    }
-                                )
-                            ]
-                            []
-                in
-                if props.isHover then
-                    bar
-
-                else
-                    S.g
-                        [ W.Chart.Internal.attrAnimationDelayX props.renderData.spacings x
-                        , W.Chart.Internal.attrTransformOrigin x yzZero
-                        , Svg.Attributes.class "ew-charts--animate-scale-z"
-                        ]
-                        [ bar ]
-            )
+viewBinBars props yzPoints =
+    yzPoints
+        |> List.map (viewBar props)
         |> S.g []
 
 
 viewBars :
-    (W.Chart.Internal.RenderDataFull msg x y z -> Maybe (W.Chart.Internal.RenderDataYZ x a))
+    (W.Chart.Internal.RenderDataFull msg x y z -> BarsData y z)
+    -> (BarsData y z -> AxisData a)
+    -> (W.Chart.Internal.RenderDataFull msg x y z -> Maybe (W.Chart.Internal.RenderDataYZ x a))
     -> (W.Chart.Internal.ChartPoint x y z -> List (W.Chart.Internal.DataPoint a))
     -> (W.Chart.Internal.RenderDataFull msg x y z -> W.Chart.Internal.AxisAttributes)
-    -> W.Chart.Internal.RenderData msg x y z constraints
+    -> W.Chart.Internal.RenderData msg x y z
     -> SC.Svg msg
-viewBars toYZData toPoints toYZConfig (W.Chart.Internal.RenderData d) =
+viewBars toBarsData_ toAxisData toYZData toPoints toYZConfig (W.Chart.Internal.RenderData d) =
     toYZData d
         |> Maybe.map
             (\yzData ->
                 viewBarsWithOptions
                     { renderData = d
+                    , barsData = toBarsData_ d
+                    , toAxisData = toAxisData
                     , toPoints = toPoints
                     , yzData = yzData
                     , yzConfig = toYZConfig d
-                    , binsCount = List.length yzData.data
-                    , binsOffset = 0
                     }
             )
         |> Maybe.withDefault (H.text "")
 
 
 viewMixedBars :
-    W.Chart.Internal.RenderData msg x y z constraints
+    W.Chart.Internal.RenderData msg x y z
     -> SC.Svg msg
 viewMixedBars (W.Chart.Internal.RenderData d) =
     Maybe.map2
         (\yData zData ->
             let
-                yBinsCount : Int
-                yBinsCount =
-                    if d.attrs.yAxis.stackType == W.Chart.Internal.NoStack then
-                        List.length yData.data
-
-                    else
-                        1
-
-                zBinsCount : Int
-                zBinsCount =
-                    if d.attrs.zAxis.stackType == W.Chart.Internal.NoStack then
-                        List.length zData.data
-
-                    else
-                        1
-
-                binsCount : Int
-                binsCount =
-                    yBinsCount + zBinsCount
+                barsData : BarsData y z
+                barsData =
+                    toBarsData d (Just yData) (Just zData)
             in
             S.g []
                 [ viewBarsWithOptions
                     { renderData = d
+                    , barsData = barsData
+                    , toAxisData = .y
                     , toPoints = .ys
                     , yzData = yData
                     , yzConfig = d.attrs.yAxis
-                    , binsCount = binsCount
-                    , binsOffset = 0
                     }
                 , viewBarsWithOptions
                     { renderData = d
+                    , barsData = barsData
+                    , toAxisData = .z
                     , toPoints = .zs
                     , yzData = zData
                     , yzConfig = d.attrs.zAxis
-                    , binsCount = binsCount
-                    , binsOffset = yBinsCount
                     }
                 ]
         )
@@ -299,53 +408,27 @@ viewMixedBars (W.Chart.Internal.RenderData d) =
 
 viewBarsWithOptions :
     { renderData : W.Chart.Internal.RenderDataFull msg x y z
+    , barsData : BarsData y z
+    , toAxisData : BarsData y z -> AxisData a
     , toPoints : W.Chart.Internal.ChartPoint x y z -> List (W.Chart.Internal.DataPoint a)
     , yzData : W.Chart.Internal.RenderDataYZ x a
     , yzConfig : W.Chart.Internal.AxisAttributes
-    , binsCount : Int
-    , binsOffset : Int
     }
     -> SC.Svg msg
 viewBarsWithOptions props =
-    let
-        binScale : Scale.BandScale Int
-        binScale =
-            Scale.band
-                { paddingInner = props.renderData.attrs.binPaddingInner
-                , paddingOuter = props.renderData.attrs.binPaddingOuter
-                , align = 0.5
-                }
-                ( 0, Scale.bandwidth props.renderData.x.bandScale )
-                (List.range 0 (props.binsCount - 1))
-
-        toX : x -> W.Chart.Internal.StackType -> Int -> Int -> Float
-        toX xDatum stackType binsOffset binIndex =
-            if stackType == W.Chart.Internal.NoStack then
-                Scale.convert props.renderData.x.bandScale xDatum
-                    + Scale.convert binScale (binsOffset + binIndex)
-
-            else
-                Scale.convert
-                    props.renderData.x.bandScale
-                    xDatum
-
-        width : Float
-        width =
-            Scale.bandwidth binScale
-    in
     props.renderData.points.byX
         |> Dict.values
         |> List.map
             (\point ->
-                viewBinBars
-                    { isHover = False
-                    , renderData = props.renderData
-                    , yzPoints = props.toPoints point
-                    , yzData = props.yzData
-                    , yzConfig = props.yzConfig
-                    , binsOffset = props.binsOffset
-                    , binWidth = width
-                    , toX = toX point.x.datum
-                    }
+                props.toPoints point
+                    |> viewBinBars
+                        { isHover = False
+                        , renderData = props.renderData
+                        , barsData = props.barsData
+                        , axisData = props.toAxisData props.barsData
+                        , xPoint = point.x
+                        , yzData = props.yzData
+                        , yzConfig = props.yzConfig
+                        }
             )
         |> S.g []

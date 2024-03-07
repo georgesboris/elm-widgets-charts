@@ -9,7 +9,7 @@ module W.Chart.Internal exposing
     , Config(..)
     , DataAttrs
     , DataPoint
-    , HoverTarget(..)
+    , HoverAttrs
     , RenderData(..)
     , RenderDataFull
     , RenderDataX
@@ -41,6 +41,7 @@ import Axis
 import Dict exposing (values)
 import Html as H
 import Html.Attributes as HA
+import Html.Events exposing (onMouseLeave)
 import Scale
 import Set
 import Shape
@@ -57,19 +58,19 @@ import W.Chart.Internal.Scale
 -- DataPoint
 
 
-type Widget msg x y z datasets
-    = Widget (WidgetData msg x y z datasets)
+type Widget msg x y z
+    = Widget (WidgetData msg x y z)
 
 
-type alias WidgetData msg x y z datasets =
-    { main : Maybe (RenderData msg x y z datasets -> Svg.Svg msg)
-    , background : Maybe (RenderData msg x y z datasets -> Svg.Svg msg)
-    , foreground : Maybe (RenderData msg x y z datasets -> Svg.Svg msg)
-    , hover : Maybe (WidgetHover msg x y z datasets)
+type alias WidgetData msg x y z =
+    { main : Maybe (RenderData msg x y z -> Svg.Svg msg)
+    , background : Maybe (RenderData msg x y z -> Svg.Svg msg)
+    , foreground : Maybe (RenderData msg x y z -> Svg.Svg msg)
+    , hover : Maybe (WidgetHover msg x y z)
     }
 
 
-type WidgetHover msg x y z datasets
+type WidgetHover msg x y z
     = HoverX (RenderDataFull msg x y z -> DataPoint x -> Svg.Svg msg)
     | HoverY (RenderDataFull msg x y z -> RenderDataYZ x y -> DataPoint x -> List (DataPoint y) -> Svg.Svg msg)
     | HoverZ (RenderDataFull msg x y z -> RenderDataYZ x z -> DataPoint x -> List (DataPoint z) -> Svg.Svg msg)
@@ -94,13 +95,26 @@ yAxisPadding =
 -- Types
 
 
-type Config msg x y z datasets
-    = Config
-        { attrs : Attributes msg
-        , xData : DataAttrs x x
-        , yData : Maybe (DataAttrs x y)
-        , zData : Maybe (DataAttrs x z)
-        }
+type Config msg x y z
+    = Config (ConfigData msg x y z)
+
+
+type alias ConfigData msg x y z =
+    { attrs : Attributes msg
+    , hover : Maybe (HoverAttrs msg x y z)
+    , xData : Maybe (DataAttrs x x)
+    , yData : Maybe (DataAttrs x y)
+    , zData : Maybe (DataAttrs x z)
+    }
+
+
+type alias HoverAttrs msg x y z =
+    { nearest : Bool
+    , tooltip : Bool
+    , onClick : Maybe (ChartPoint x y z -> msg)
+    , onHover : Maybe (Maybe (ChartPoint x y z) -> msg)
+    , custom : List (H.Html msg)
+    }
 
 
 type alias DataAttrs x a =
@@ -111,7 +125,7 @@ type alias DataAttrs x a =
     }
 
 
-type RenderData msg x y z datasets
+type RenderData msg x y z
     = RenderData (RenderDataFull msg x y z)
 
 
@@ -178,8 +192,8 @@ type alias RenderDataYZ x a =
     }
 
 
-toRenderData : Config msg x y z datasets -> RenderData msg x y z datasets
-toRenderData (Config cfg) =
+toRenderData : ConfigData msg x y z -> DataAttrs x x -> RenderData msg x y z
+toRenderData cfg xData =
     let
         spacings : Spacings
         spacings =
@@ -193,16 +207,16 @@ toRenderData (Config cfg) =
                 , align = 0.5
                 }
                 ( 0, spacings.chart.width )
-                cfg.xData.data
+                xData.data
 
         x : RenderDataX x
         x =
-            { data = cfg.xData.data
-            , toLabel = cfg.xData.toLabel
-            , toColor = cfg.xData.toColor
-            , toValue = cfg.xData.toValue
+            { data = xData.data
+            , toLabel = xData.toLabel
+            , toColor = xData.toColor
+            , toValue = xData.toValue
             , bandScale = bandScale
-            , scale = Scale.toRenderable cfg.xData.toLabel bandScale
+            , scale = Scale.toRenderable xData.toLabel bandScale
             }
 
         yBefore : Maybe (RenderDataYZ x y)
@@ -212,7 +226,7 @@ toRenderData (Config cfg) =
                     (\yData_ ->
                         toStackedData
                             { spacings = spacings
-                            , xData = cfg.xData
+                            , xData = xData
                             , axisData = yData_
                             , axisConfig = cfg.attrs.yAxis
                             }
@@ -225,7 +239,7 @@ toRenderData (Config cfg) =
                     (\zData_ ->
                         toStackedData
                             { spacings = spacings
-                            , xData = cfg.xData
+                            , xData = xData
                             , axisData = zData_
                             , axisConfig = cfg.attrs.zAxis
                             }
@@ -294,7 +308,6 @@ toScaleFn spacings axisAttributes domain =
 
         Logarithmic base ->
             Scale.log base ( spacings.chart.height, 0 ) domain
-                |> Debug.log "log"
 
 
 toDomainWithSafety : AxisAttributes -> ( Float, Float ) -> ( Float, Float )
@@ -440,7 +453,7 @@ toPoints x maybeYZ yzPoints =
                                     { datum = datum
                                     , value = value
                                     , missing = yz.toValue datum x == Nothing
-                                    , valueScaled = Scale.convert yz.scale value
+                                    , valueScaled = Scale.convert yz.scale (high - low)
                                     , valueStart = Scale.convert yz.scale high
                                     , valueEnd = Scale.convert yz.scale low
                                     }
@@ -451,7 +464,7 @@ toPoints x maybeYZ yzPoints =
                     points
                         |> List.foldl
                             (\yzPoint acc ->
-                                addToList yzPoint.valueScaled yzPoint acc
+                                addToList yzPoint.valueStart yzPoint acc
                             )
                             Dict.empty
                         |> Dict.map (\_ -> List.reverse)
@@ -501,15 +514,8 @@ type alias Attributes msg =
     , binPaddingOuter : Float
     , binPaddingInner : Float
     , background : String
-    , hoverFocus : Bool
-    , hoverTarget : Maybe HoverTarget
     , htmlAttributes : List (H.Attribute msg)
     }
-
-
-type HoverTarget
-    = NearestX
-    | NearestPoint
 
 
 type ScaleType
@@ -594,8 +600,6 @@ defaultAttrs =
     , binPaddingOuter = 0.5
     , binPaddingInner = 0.2
     , background = "transparent"
-    , hoverFocus = False
-    , hoverTarget = Just NearestX
     , htmlAttributes = []
     }
 
@@ -791,19 +795,6 @@ bounds data =
         |> Maybe.withDefault ( 0, 0 )
 
 
-boundsWithSafety :
-    { safety : Float
-    , toValue : a -> Float
-    }
-    -> List a
-    -> ( Float, Float )
-boundsWithSafety props data =
-    data
-        |> boundsAt props.toValue
-        |> Maybe.withDefault { min = 0, max = 0 }
-        |> (\{ min, max } -> safeBounds props.safety ( min, max ))
-
-
 {-| -}
 safeBounds : Float -> ( Float, Float ) -> ( Float, Float )
 safeBounds safety ( min, max ) =
@@ -943,8 +934,7 @@ attrAnimationDelay spacings xScaled yScaled =
         -- than points on the upper right
         pct : Float
         pct =
-            (xScaled + (spacings.chart.height - yScaled))
-                / max 1 (spacings.chart.width + spacings.chart.height)
+            0.5 * ((xScaled / spacings.chart.width) + (yScaled / spacings.chart.height))
 
         -- Controls the max offset
         -- The faster points will have 0.0 offset and

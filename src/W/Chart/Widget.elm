@@ -19,7 +19,7 @@ import W.Chart.Internal exposing (DataPoint, Widget(..))
 
 
 {-| -}
-empty : Widget msg x y z datasets
+empty : Widget msg x y z
 empty =
     Widget
         { main = Nothing
@@ -30,7 +30,7 @@ empty =
 
 
 {-| -}
-fromX : (W.Chart.Internal.RenderData msg x y z datasets -> Svg.Svg msg) -> Widget msg x y z datasets
+fromX : (W.Chart.Internal.RenderData msg x y z -> Svg.Svg msg) -> Widget msg x y z
 fromX a =
     Widget
         { main = Just a
@@ -42,30 +42,22 @@ fromX a =
 
 {-| -}
 fromY :
-    (W.Chart.Internal.RenderData msg x y z { datasets | yData : () }
+    (W.Chart.Internal.RenderData msg x y z
      -> Svg.Svg msg
     )
-    -> Widget msg x y z { datasets | yData : () }
+    -> Widget msg x y z
 fromY =
     fromX
 
 
 {-| -}
-fromZ :
-    (W.Chart.Internal.RenderData msg x y z { datasets | zData : () }
-     -> Svg.Svg msg
-    )
-    -> Widget msg x y z { datasets | zData : () }
+fromZ : (W.Chart.Internal.RenderData msg x y z -> Svg.Svg msg) -> Widget msg x y z
 fromZ =
     fromX
 
 
 {-| -}
-fromYZ :
-    (W.Chart.Internal.RenderData msg x y z { with | yData : (), zData : () }
-     -> Svg.Svg msg
-    )
-    -> Widget msg x y z { with | yData : (), zData : () }
+fromYZ : (W.Chart.Internal.RenderData msg x y z -> Svg.Svg msg) -> Widget msg x y z
 fromYZ =
     fromX
 
@@ -76,22 +68,22 @@ fromYZ =
 
 {-| -}
 withBackground :
-    (W.Chart.Internal.RenderData msg x y z datasets
+    (W.Chart.Internal.RenderData msg x y z
      -> Svg.Svg msg
     )
-    -> Widget msg x y z datasets
-    -> Widget msg x y z datasets
+    -> Widget msg x y z
+    -> Widget msg x y z
 withBackground v (Widget d) =
     Widget { d | background = Just v }
 
 
 {-| -}
 withForeground :
-    (W.Chart.Internal.RenderData msg x y z datasets
+    (W.Chart.Internal.RenderData msg x y z
      -> Svg.Svg msg
     )
-    -> Widget msg x y z datasets
-    -> Widget msg x y z datasets
+    -> Widget msg x y z
+    -> Widget msg x y z
 withForeground v (Widget d) =
     Widget { d | foreground = Just v }
 
@@ -102,8 +94,8 @@ withHoverX :
      -> DataPoint x
      -> Svg.Svg msg
     )
-    -> Widget msg x y z { with | yData : () }
-    -> Widget msg x y z { with | yData : () }
+    -> Widget msg x y z
+    -> Widget msg x y z
 withHoverX v (Widget d) =
     Widget { d | hover = Just (W.Chart.Internal.HoverX v) }
 
@@ -116,8 +108,8 @@ withHoverY :
      -> List (DataPoint y)
      -> Svg.Svg msg
     )
-    -> Widget msg x y z { with | yData : () }
-    -> Widget msg x y z { with | yData : () }
+    -> Widget msg x y z
+    -> Widget msg x y z
 withHoverY v (Widget d) =
     Widget { d | hover = Just (W.Chart.Internal.HoverY v) }
 
@@ -130,8 +122,8 @@ withHoverZ :
      -> List (DataPoint z)
      -> Svg.Svg msg
     )
-    -> Widget msg x y z { with | zData : () }
-    -> Widget msg x y z { with | zData : () }
+    -> Widget msg x y z
+    -> Widget msg x y z
 withHoverZ v (Widget d) =
     Widget { d | hover = Just (W.Chart.Internal.HoverZ v) }
 
@@ -144,7 +136,7 @@ withHoverYZ :
      -> W.Chart.Internal.ChartPoint x y z
      -> Svg.Svg msg
     )
-    -> Widget msg x y z { with | yData : (), zData : () }
-    -> Widget msg x y z { with | yData : (), zData : () }
+    -> Widget msg x y z
+    -> Widget msg x y z
 withHoverYZ v (Widget d) =
     Widget { d | hover = Just (W.Chart.Internal.HoverYZ v) }

@@ -42,19 +42,25 @@ viewDataset maybeDataset datasetAttrs dataPoints =
                     [ datasetAttrs.label
                         |> Maybe.map (\l -> H.h2 [ HA.class "ew-charts--tooltip-yz--label" ] [ H.text l ])
                         |> Maybe.withDefault (H.text "")
-                    , dataPoints
-                        |> List.map
-                            (\point ->
-                                H.li
-                                    [ HA.class "ew-charts--tooltip-yz--item" ]
-                                    [ H.span [ HA.class "ew-charts--tooltip-yz--item-label" ] [ H.text (dataset.toLabel point.datum) ]
-                                    , H.span [ HA.class "ew-charts--tooltip-yz--item-value" ] [ H.text (String.fromFloat point.value) ]
-                                    ]
-                            )
-                        |> H.ul [ HA.class "ew-charts--tooltip-yz--list" ]
+                    , H.ul [ HA.class "ew-charts--tooltip-yz--list" ]
+                        (List.map (viewItem dataset) dataPoints)
                     ]
             )
         |> Maybe.withDefault (H.text "")
+
+
+viewItem : W.Chart.Internal.RenderDataYZ x a -> W.Chart.Internal.DataPoint a -> H.Html msg
+viewItem dataset point =
+    H.li
+        [ HA.class "ew-charts--tooltip-yz--item" ]
+        [ H.span
+            [ HA.class "ew-charts--tooltip-yz--item-color"
+            , HA.style "background" (dataset.toColor point.datum)
+            ]
+            []
+        , H.span [ HA.class "ew-charts--tooltip-yz--item-label" ] [ H.text (dataset.toLabel point.datum) ]
+        , H.span [ HA.class "ew-charts--tooltip-yz--item-value" ] [ H.text (String.fromFloat point.value) ]
+        ]
 
 
 view :

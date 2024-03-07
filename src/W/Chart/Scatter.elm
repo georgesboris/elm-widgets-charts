@@ -15,12 +15,12 @@ import W.Chart.Widget
 
 
 {-| -}
-viewY : List attrs -> W.Chart.Widget msg x y z { datasets | yData : () }
+viewY : List attrs -> W.Chart.Widget msg x y z
 viewY attrs_ =
     W.Chart.Widget.empty
 
 
 {-| -}
-viewZ : List attrs -> W.Chart.Widget msg x y z { datasets | zData : () }
+viewZ : List attrs -> W.Chart.Widget msg x y z
 viewZ attrs_ =
     W.Chart.Widget.empty

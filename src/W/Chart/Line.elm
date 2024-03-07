@@ -21,14 +21,14 @@ import W.Svg.Circle
 
 
 {-| -}
-yLine : W.Chart.Internal.Widget msg x y z { datasets | yData : () }
+yLine : W.Chart.Internal.Widget msg x y z
 yLine =
     W.Chart.Widget.fromY (viewLines .y)
         |> W.Chart.Widget.withHoverY (\_ -> viewHover)
 
 
 {-| -}
-zLine : W.Chart.Internal.Widget msg x y z { datasets | zData : () }
+zLine : W.Chart.Internal.Widget msg x y z
 zLine =
     W.Chart.Widget.fromZ (viewLines .z)
         |> W.Chart.Widget.withHoverZ (\_ -> viewHover)
@@ -59,7 +59,7 @@ viewHover yzData xPoint yzPoints =
                         }
                     ]
                     { x = xPoint.valueScaled
-                    , y = yzPoint.valueScaled
+                    , y = yzPoint.valueStart
                     , radius = 4.0
                     }
             )
@@ -69,20 +69,16 @@ viewHover yzData xPoint yzPoints =
 
 viewLines :
     (W.Chart.Internal.RenderDataFull msg x y z -> Maybe (W.Chart.Internal.RenderDataYZ x a))
-    -> W.Chart.Internal.RenderData msg x y z datasets
+    -> W.Chart.Internal.RenderData msg x y z
     -> SC.Svg msg
 viewLines toRenderDataset (W.Chart.Internal.RenderData d) =
     toRenderDataset d
         |> Maybe.map
             (\renderDataset ->
-                renderDataset.bandData
+                renderDataset.values
                     |> List.indexedMap
-                        (\index ( datum, values ) ->
+                        (\index data ->
                             let
-                                color : String
-                                color =
-                                    renderDataset.toColor datum
-
                                 areaPoints : List (Maybe ( ( Float, Float ), ( Float, Float ) ))
                                 areaPoints =
                                     List.map2
@@ -102,7 +98,7 @@ viewLines toRenderDataset (W.Chart.Internal.RenderData d) =
                                                 )
                                         )
                                         d.x.data
-                                        values
+                                        data.stackedValues
 
                                 linePoints : List (Maybe ( Float, Float ))
                                 linePoints =
@@ -114,7 +110,7 @@ viewLines toRenderDataset (W.Chart.Internal.RenderData d) =
                                     (Shape.area Shape.linearCurve areaPoints)
                                     [ Svg.Attributes.class "ew-charts--animate-fade"
                                     , Svg.Attributes.style ("animation-delay:" ++ String.fromInt (index * 400))
-                                    , Svg.Attributes.fill color
+                                    , Svg.Attributes.fill data.color
                                     , Svg.Attributes.fillOpacity "0.2"
                                     ]
                                 , Path.element
@@ -123,7 +119,7 @@ viewLines toRenderDataset (W.Chart.Internal.RenderData d) =
                                     , Svg.Attributes.style ("animation-delay:" ++ String.fromInt (index * 400))
                                     , Svg.Attributes.fill "transparent"
                                     , Svg.Attributes.strokeWidth "2px"
-                                    , Svg.Attributes.stroke color
+                                    , Svg.Attributes.stroke data.color
                                     ]
                                 ]
                         )

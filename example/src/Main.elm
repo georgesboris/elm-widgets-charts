@@ -18,7 +18,7 @@ import W.Styles
 
 
 type alias Point =
-    W.Chart.PointXY Date.Date Int
+    W.Chart.PointXYZ Date.Date Int TrigFunction
 
 
 type alias Model =
@@ -53,6 +53,12 @@ update msg model =
 date : Int -> Month -> Int -> Date
 date =
     Date.fromCalendarDate
+
+
+dates : List Date
+dates =
+    List.range 1 31
+        |> List.map (\i -> Date.fromCalendarDate 2023 Jan i)
 
 
 impressionsList : List ( Date, Float )
@@ -168,44 +174,52 @@ main =
         , view =
             \model ->
                 let
-                    chartConfig : W.Chart.ConfigXY Msg Date.Date Int
+                    chartConfig : W.Chart.ConfigXYZ Msg Date.Date Int TrigFunction
                     chartConfig =
-                        W.Chart.fromXY []
+                        W.Chart.fromXYZ []
                             { x =
                                 W.Chart.xAxis []
-                                    { data = List.map Tuple.first purchasesList
+                                    { data = dates
                                     , toLabel = Date.format "MMM d"
                                     }
                             , y =
-                                W.Chart.yzListAxis [ W.Chart.stacked ]
-                                    { data = List.range 0 19
+                                W.Chart.axisList [ W.Chart.stacked ]
+                                    { data = List.range 0 9
                                     , toLabel = String.fromInt
                                     , toColor = W.Chart.Colors.colorFrom W.Chart.Colors.rainbow
                                     , toValue = \_ -> purchasesByDay
                                     }
+                            , z =
+                                W.Chart.axisList []
+                                    { data = [ Cos, Sin ]
+                                    , toLabel = trigFnLabel
+                                    , toColor = trigFnColor
+                                    , toValue = \fn x -> Just (applyTrigFn fn (toFloat (Date.toRataDie x)))
+                                    }
                             }
                             |> W.Chart.withActive model.onClick
                             |> W.Chart.withHover
-                                [ W.Chart.groupByXY
-
-                                -- , W.Chart.noTooltip
-                                , W.Chart.onClick OnClick
+                                [ W.Chart.onClick OnClick
                                 , W.Chart.onMouseEnter OnMouseEnter
                                 , W.Chart.onMouseLeave OnMouseLeave
+                                , W.Chart.groupByXY
+
+                                -- , W.Chart.noTooltip
                                 ]
                 in
                 viewWrapper model
                     [ chartConfig
                         |> W.Chart.view
-                            [ W.Chart.Line.yLine
+                            [ W.Chart.Line.fromY [ W.Chart.Line.smooth, W.Chart.Line.lineAlways, W.Chart.Line.dashed ]
                             ]
                     , chartConfig
                         |> W.Chart.view
-                            [ W.Chart.Bar.yBars
+                            [ W.Chart.Bar.fromZ []
                             ]
                     , chartConfig
                         |> W.Chart.view
-                            [ W.Chart.Bubble.viewY []
+                            [ W.Chart.Line.fromZ []
+                            , W.Chart.Bubble.fromY []
                                 { toRadius = \x y -> y.render.value
                                 , toColor = \x y -> y.render.color
                                 }
@@ -218,30 +232,51 @@ main =
 --
 
 
+type TrigFunction
+    = Cos
+    | Sin
+
+
+applyTrigFn : TrigFunction -> Float -> Float
+applyTrigFn v =
+    case v of
+        Cos ->
+            \x -> cos (x * 0.5)
+
+        Sin ->
+            \x -> sin (x * 0.5)
+
+
+trigFnLabel : TrigFunction -> String
+trigFnLabel v =
+    case v of
+        Cos ->
+            "Cos"
+
+        Sin ->
+            "Sin"
+
+
+trigFnColor : TrigFunction -> String
+trigFnColor v =
+    let
+        index : Int
+        index =
+            case v of
+                Cos ->
+                    0
+
+                Sin ->
+                    1
+    in
+    W.Chart.Colors.colorFrom W.Chart.Colors.purples index
+
+
 type alias Data =
     { label : String
     , color : String
     , toValue : Float -> Float
     }
-
-
-yDataset : List Data
-yDataset =
-    [ ( "Cos", cos )
-    , ( "Sin", sin )
-    , ( "Tan", tan )
-    ]
-        -- [ ( "Cos", \x -> x * 2 )
-        -- , ( "Sin", \x -> x * 3 )
-        -- , ( "Tan", \x -> x * 4 )
-        -- ]
-        |> List.indexedMap
-            (\index ( label, fn ) ->
-                { label = label
-                , color = W.Chart.Colors.forIndex index
-                , toValue = fn
-                }
-            )
 
 
 zDataset : List Data
@@ -310,14 +345,15 @@ globalStyles =
 viewColor : ( Float, Float ) -> Maybe Point -> H.Html msg
 viewColor ( top, right ) maybeColor =
     maybeColor
+        |> Maybe.andThen (List.head << .y)
         |> Maybe.map
-            (\_ ->
+            (\y ->
                 H.div
                     [ HA.style "width" "40px"
                     , HA.style "height" "40px"
                     , HA.style "border-radius" "20px"
                     , HA.style "position" "fixed"
-                    , HA.style "background" "black"
+                    , HA.style "background" y.color
                     , HA.style "top" (String.fromFloat top ++ "px")
                     , HA.style "right" (String.fromFloat right ++ "px")
                     ]

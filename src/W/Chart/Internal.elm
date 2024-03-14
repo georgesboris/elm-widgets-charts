@@ -12,12 +12,12 @@ module W.Chart.Internal exposing
     , ChartPointDict
     , Config(..)
     , ConfigData
+    , Context
     , DataAttrs
     , DataPoint
     , HoverAttrs
     , RenderAxisX
     , RenderAxisYZ
-    , RenderContext
     , RenderData(..)
     , RenderDataFull
     , RenderDataX
@@ -72,10 +72,10 @@ type Widget msg x y z point
 
 
 type alias WidgetData msg x y z point =
-    { main : Maybe (RenderData msg x y z -> Svg.Svg msg)
-    , background : Maybe (RenderData msg x y z -> Svg.Svg msg)
-    , foreground : Maybe (RenderData msg x y z -> Svg.Svg msg)
-    , hover : Maybe (RenderContext x y z -> ChartPointData point -> Svg.Svg msg)
+    { main : Maybe (Context x y z -> Svg.Svg msg)
+    , background : Maybe (Context x y z -> Svg.Svg msg)
+    , foreground : Maybe (Context x y z -> Svg.Svg msg)
+    , hover : Maybe (Context x y z -> ChartPointData point -> Svg.Svg msg)
     }
 
 
@@ -138,7 +138,10 @@ type alias RenderAxisX x =
     , scale : Axis.RenderableScale {} (List x) ( Float, Float ) x
     , binScale : Scale.BandScale x
     , range : Float
-    , attrs : AxisAttributes
+    , ticks : Int
+    , showAxis : Bool
+    , showGrid : Bool
+    , format : x -> String
     }
 
 
@@ -147,16 +150,22 @@ type alias RenderAxisYZ a =
     , scale : Scale.ContinuousScale Float
     , zero : Float
     , range : Float
-    , attrs : AxisAttributes
+    , label : Maybe String
+    , isStacked : Bool
+    , ticks : Int
+    , format : Float -> String
+    , showAxis : Bool
+    , showGrid : Bool
     }
 
 
 {-| -}
-type alias RenderContext x y z =
+type alias Context x y z =
     { x : RenderAxisX x
     , y : RenderAxisYZ y
     , z : RenderAxisYZ z
     , points : ChartPointDict x y z
+    , isDebugging : Bool
     }
 
 
@@ -201,7 +210,7 @@ type alias RenderDataFull msg x y z =
     , x : RenderDataX x
     , y : Maybe (RenderDataYZ x y)
     , z : Maybe (RenderDataYZ x z)
-    , ctx : RenderContext x y z
+    , ctx : Context x y z
     , points : ChartPointDict x y z
     }
 
@@ -331,41 +340,49 @@ toRenderData cfg xData =
 
         -- If both X and Z are defined
         -- we normalize them so their 0.0 match.
-        ( yData, zData ) =
+        ( yScale, zScale ) =
             case ( ( yBefore, cfg.attrs.yAxis.scale ), ( zBefore, cfg.attrs.zAxis.scale ) ) of
                 ( ( Just y, Linear ), ( Just z, Linear ) ) ->
-                    let
-                        ( yDomain_, zDomain_ ) =
-                            W.Chart.Internal.Scale.normalizeDomains
-                                (Scale.domain y.scale)
-                                (Scale.domain z.scale)
-                    in
-                    ( Just { y | scale = toScale spacings cfg.attrs.yAxis yDomain_ }
-                    , Just { z | scale = toScale spacings cfg.attrs.zAxis zDomain_ }
-                    )
+                    W.Chart.Internal.Scale.normalizeDomains
+                        (Scale.domain y.scale)
+                        (Scale.domain z.scale)
+                        |> Tuple.mapBoth
+                            (toScale spacings cfg.attrs.yAxis)
+                            (toScale spacings cfg.attrs.zAxis)
 
+                -- ( Just
+                --     { y
+                --         | scale =
+                --             toScale spacings
+                --                 cfg.attrs.yAxis
+                --                 (Scale.domain y.scale)
+                --     }
+                -- , Just
+                --     { z
+                --         | scale =
+                --             toScale spacings
+                --                 cfg.attrs.zAxis
+                --                 (Scale.domain z.scale)
+                --     }
+                -- )
                 _ ->
                     ( yBefore
-                        |> Maybe.map
-                            (\y ->
-                                { y
-                                    | scale =
-                                        toScale spacings
-                                            cfg.attrs.yAxis
-                                            (Scale.domain y.scale)
-                                }
-                            )
+                        |> Maybe.map (\y -> toScale spacings cfg.attrs.yAxis (Scale.domain y.scale))
+                        |> Maybe.withDefault dummyScale
                     , zBefore
-                        |> Maybe.map
-                            (\z ->
-                                { z
-                                    | scale =
-                                        toScale spacings
-                                            cfg.attrs.zAxis
-                                            (Scale.domain z.scale)
-                                }
-                            )
+                        |> Maybe.map (\z -> toScale spacings cfg.attrs.zAxis (Scale.domain z.scale))
+                        |> Maybe.withDefault dummyScale
                     )
+
+        yData : Maybe (RenderDataYZ x y)
+        yData =
+            yBefore
+                |> Maybe.map (scaleStackedData yScale)
+
+        zData : Maybe (RenderDataYZ x z)
+        zData =
+            zBefore
+                |> Maybe.map (scaleStackedData zScale)
 
         yDataList : List y
         yDataList =
@@ -373,23 +390,11 @@ toRenderData cfg xData =
                 |> Maybe.map .data
                 |> Maybe.withDefault []
 
-        yScale : Scale.ContinuousScale Float
-        yScale =
-            yData
-                |> Maybe.map .scale
-                |> Maybe.withDefault dummyScale
-
         zDataList : List z
         zDataList =
             zData
                 |> Maybe.map .data
                 |> Maybe.withDefault []
-
-        zScale : Scale.ContinuousScale Float
-        zScale =
-            zData
-                |> Maybe.map .scale
-                |> Maybe.withDefault dummyScale
 
         points : ChartPointDict x y z
         points =
@@ -403,34 +408,42 @@ toRenderData cfg xData =
         , z = zData
         , points = points
         , ctx =
-            { x =
+            { points = points
+            , isDebugging = cfg.attrs.debug
+            , x =
                 { data = xData.data
                 , scale = x.scale
                 , binScale = x.bandScale
                 , range = spacings.chart.width
-                , attrs = cfg.attrs.xAxis
+                , ticks = cfg.attrs.yAxis.ticks
+                , showAxis = cfg.attrs.xAxis.showAxis
+                , showGrid = cfg.attrs.xAxis.showGrid
+                , format = xData.toLabel
                 }
-
-            -- y
             , y =
                 { data = yDataList
                 , scale = yScale
                 , zero = Scale.convert yScale 0
                 , range = spacings.chart.height
-                , attrs = cfg.attrs.yAxis
+                , isStacked = cfg.attrs.yAxis.stackType /= NotStacked
+                , ticks = cfg.attrs.yAxis.ticks
+                , label = cfg.attrs.yAxis.label
+                , format = cfg.attrs.yAxis.format
+                , showAxis = cfg.attrs.yAxis.showAxis
+                , showGrid = cfg.attrs.yAxis.showGrid
                 }
-
-            -- z
             , z =
                 { data = zDataList
                 , scale = zScale
                 , zero = Scale.convert zScale 0
                 , range = spacings.chart.height
-                , attrs = cfg.attrs.zAxis
+                , isStacked = cfg.attrs.zAxis.stackType /= NotStacked
+                , ticks = cfg.attrs.yAxis.ticks
+                , label = cfg.attrs.zAxis.label
+                , format = cfg.attrs.zAxis.format
+                , showAxis = cfg.attrs.zAxis.showAxis
+                , showGrid = cfg.attrs.zAxis.showGrid
                 }
-
-            -- points
-            , points = points
             }
         }
 
@@ -571,8 +584,8 @@ toChartPointDict attrs xData maybeYData maybeZData =
                     , ys = ys
                     , zs = zs
                     , xRender = x.render
-                    , yRender = []
-                    , zRender = []
+                    , yRender = List.map .render ys
+                    , zRender = List.map .render zs
                     }
                   )
                     :: byX
@@ -681,8 +694,6 @@ type alias Attributes msg =
     , yAxis : AxisAttributes
     , zAxis : AxisAttributes
     , padding : Float
-    , binPaddingOuter : Float
-    , binPaddingInner : Float
     , background : String
     , htmlAttributes : List (H.Attribute msg)
     }
@@ -694,9 +705,9 @@ type ScaleType
 
 
 type StackType
-    = NoStack
-    | AbsoluteStack
-    | RelativeStack
+    = NotStacked
+    | Stacked
+    | Distribution
 
 
 type AxisType
@@ -714,7 +725,7 @@ type alias AxisAttributes =
     , scale : ScaleType
     , stackType : StackType
     , showAxis : Bool
-    , showGridLines : Bool
+    , showGrid : Bool
     }
 
 
@@ -748,13 +759,13 @@ defaultAxisAttributes : AxisAttributes
 defaultAxisAttributes =
     { label = Nothing
     , defaultValue = 0.0
-    , format = String.fromFloat
+    , format = defaultFormat
     , safety = 0.1
-    , ticks = 10
+    , ticks = 5
     , scale = Linear
-    , stackType = NoStack
+    , stackType = NotStacked
     , showAxis = True
-    , showGridLines = True
+    , showGrid = True
     }
 
 
@@ -767,11 +778,27 @@ defaultAttrs =
     , yAxis = defaultAxisAttributes
     , zAxis = defaultAxisAttributes
     , padding = 40
-    , binPaddingOuter = 0.5
-    , binPaddingInner = 0.2
     , background = "transparent"
     , htmlAttributes = []
     }
+
+
+defaultFormat : Float -> String
+defaultFormat value =
+    let
+        valueString : String
+        valueString =
+            String.fromFloat value
+    in
+    case String.split "." valueString of
+        int :: dec :: [] ->
+            int ++ "." ++ String.left 3 dec
+
+        int :: [] ->
+            int
+
+        _ ->
+            valueString
 
 
 applyAttrs : List (Attribute msg) -> Attributes msg
@@ -781,6 +808,42 @@ applyAttrs attrs =
 
 
 -- Helpers : StackedData
+
+
+scaleStackedData : Scale.ContinuousScale Float -> RenderDataYZ x a -> RenderDataYZ x a
+scaleStackedData scale yz =
+    { yz
+        | scale = scale
+        , values =
+            yz.values
+                |> List.map
+                    (\axis ->
+                        { axis
+                            | values =
+                                axis.values
+                                    |> List.map
+                                        (\point ->
+                                            let
+                                                render : RenderDatum
+                                                render =
+                                                    point.render
+
+                                                valueScaled : Float
+                                                valueScaled =
+                                                    Scale.convert scale render.valueStart
+                                            in
+                                            { point
+                                                | render =
+                                                    { render
+                                                        | valueScaled = valueScaled
+                                                        , valueStart = valueScaled
+                                                        , valueEnd = Scale.convert scale render.valueEnd
+                                                    }
+                                            }
+                                        )
+                        }
+                    )
+    }
 
 
 toStackedData :
@@ -822,26 +885,15 @@ toStackedData props =
                 stackOffset : List (List ( Float, Float )) -> List (List ( Float, Float ))
                 stackOffset =
                     case props.axisConfig.stackType of
-                        NoStack ->
+                        NotStacked ->
                             identity
 
-                        AbsoluteStack ->
-                            Shape.stackOffsetNone
+                        Stacked ->
+                            Shape.stackOffsetDiverging
 
-                        RelativeStack ->
-                            Shape.stackOffsetExpand
-                                -- Relative stacks may contain NaN's since division by zero may occur.
-                                -- To prevent this buggy behavior we need to replace NaN with 0.0 manually.
-                                >> List.map
-                                    (List.map
-                                        (\( yLow, yHigh ) ->
-                                            if isNaN yHigh then
-                                                ( yLow, 0.0 )
-
-                                            else
-                                                ( yLow, yHigh )
-                                        )
-                                    )
+                        Distribution ->
+                            stackOffsetDistribution
+                                >> Shape.stackOffsetDiverging
             in
             Shape.stack
                 { offset = stackOffset
@@ -872,11 +924,6 @@ toStackedData props =
                 , values =
                     List.map3
                         (\x v ( low, high ) ->
-                            let
-                                valueScaled : Float
-                                valueScaled =
-                                    Scale.convert scale high
-                            in
                             { datum =
                                 { datum = a.datum
                                 , color = a.color
@@ -887,11 +934,9 @@ toStackedData props =
                                 , label = a.label
                                 , value = v
                                 , valueString = props.axisConfig.format v
-
-                                -- , valueScaled = Scale.convert scale (high - low)
-                                , valueScaled = valueScaled
-                                , valueStart = valueScaled
-                                , valueEnd = Scale.convert scale low
+                                , valueScaled = high
+                                , valueStart = high
+                                , valueEnd = low
                                 , isDefault = props.axisData.toValue a.datum x == Nothing
                                 }
                             }
@@ -905,6 +950,28 @@ toStackedData props =
             dataWithValues
             stack.values
     }
+
+
+stackOffsetDistribution : List (List ( Float, Float )) -> List (List ( Float, Float ))
+stackOffsetDistribution series =
+    series
+        |> transpose
+        |> List.map normalizeColumn
+        |> transpose
+
+
+normalizeColumn : List ( Float, Float ) -> List ( Float, Float )
+normalizeColumn column =
+    let
+        values : List Float
+        values =
+            List.map (\( a, b ) -> b - a) column
+
+        total : Float
+        total =
+            List.foldl (\x acc -> acc + abs x) 0 values
+    in
+    List.map (\value -> ( 0, value / total )) values
 
 
 transpose : List (List a) -> List (List a)
@@ -1110,7 +1177,7 @@ viewHtml attrs children =
 ---
 
 
-attrAnimationDelayX : RenderContext x y z -> Float -> Svg.Attribute msg
+attrAnimationDelayX : Context x y z -> Float -> Svg.Attribute msg
 attrAnimationDelayX ctx xScaled =
     let
         -- This percentage based on both X and Y creates an offset
@@ -1134,7 +1201,7 @@ attrAnimationDelayX ctx xScaled =
     SA.style ("animation-delay:" ++ String.fromFloat delay ++ "s")
 
 
-attrAnimationDelay : RenderContext x y z -> Float -> Float -> Svg.Attribute msg
+attrAnimationDelay : Context x y z -> Float -> Float -> Svg.Attribute msg
 attrAnimationDelay ctx xScaled yScaled =
     let
         -- This percentage based on both X and Y creates an offset

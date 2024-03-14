@@ -1,18 +1,29 @@
 module W.Chart.Widget exposing
     ( empty, fromX, fromY, fromZ, fromYZ
     , withBackground, withForeground, withHover
+    , Context
     )
 
 {-|
 
 @docs empty, fromX, fromY, fromZ, fromYZ
 @docs withBackground, withForeground, withHover
+@docs Context
 
 -}
 
 import Svg
 import W.Chart
 import W.Chart.Internal exposing (Widget(..))
+
+
+
+-- Types
+
+
+{-| -}
+type alias Context x y z =
+    W.Chart.Internal.Context x y z
 
 
 
@@ -31,7 +42,7 @@ empty =
 
 
 {-| -}
-fromX : (W.Chart.Internal.RenderData msg x y z -> Svg.Svg msg) -> W.Chart.WidgetX msg x y z a
+fromX : (Context x y z -> Svg.Svg msg) -> W.Chart.WidgetX msg x y z a
 fromX a =
     Widget
         { main = Just a
@@ -42,7 +53,7 @@ fromX a =
 
 
 {-| -}
-fromY : (W.Chart.Internal.RenderData msg x y z -> Svg.Svg msg) -> W.Chart.WidgetXY msg x y z a
+fromY : (Context x y z -> Svg.Svg msg) -> W.Chart.WidgetXY msg x y z a
 fromY a =
     Widget
         { main = Just a
@@ -53,7 +64,7 @@ fromY a =
 
 
 {-| -}
-fromZ : (W.Chart.Internal.RenderData msg x y z -> Svg.Svg msg) -> W.Chart.WidgetXYZ msg x y z a
+fromZ : (Context x y z -> Svg.Svg msg) -> W.Chart.WidgetXYZ msg x y z a
 fromZ a =
     Widget
         { main = Just a
@@ -64,7 +75,7 @@ fromZ a =
 
 
 {-| -}
-fromYZ : (W.Chart.Internal.RenderData msg x y z -> Svg.Svg msg) -> W.Chart.WidgetXYZ msg x y z a
+fromYZ : (Context x y z -> Svg.Svg msg) -> W.Chart.WidgetXYZ msg x y z a
 fromYZ a =
     Widget
         { main = Just a
@@ -80,7 +91,7 @@ fromYZ a =
 
 {-| -}
 withBackground :
-    (W.Chart.Internal.RenderData msg x y z
+    (Context x y z
      -> Svg.Svg msg
     )
     -> Widget msg x y z point
@@ -91,7 +102,7 @@ withBackground v (Widget d) =
 
 {-| -}
 withForeground :
-    (W.Chart.Internal.RenderData msg x y z
+    (Context x y z
      -> Svg.Svg msg
     )
     -> Widget msg x y z point
@@ -102,7 +113,7 @@ withForeground v (Widget d) =
 
 {-| -}
 withHover :
-    (W.Chart.RenderContext x y z -> W.Chart.Internal.ChartPointData point -> Svg.Svg msg)
+    (Context x y z -> W.Chart.Internal.ChartPointData point -> Svg.Svg msg)
     -> Widget msg x y z point
     -> Widget msg x y z point
 withHover v (Widget d) =

@@ -1,11 +1,10 @@
 {
     "type": "package",
-    "name": "georgesboris/elm-widgets-charts",
-    "summary": "Create interactive, stateless charts themed through elm-widgets",
+    "name": "georgesboris/elm-widgets-charts-alpha",
+    "summary": "Alpha version of elm-widgets-charts. Constant breaking changes.",
     "license": "MPL-2.0",
     "version": "1.0.0",
     "exposed-modules": [
-        "Attr",
         "W.Chart",
         "W.Chart.Bar",
         "W.Chart.Bubble",

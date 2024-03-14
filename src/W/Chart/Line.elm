@@ -1,15 +1,23 @@
-module W.Chart.Line exposing (yLine, zLine)
+module W.Chart.Line exposing
+    ( fromY, fromZ
+    , smooth, dashed, areaAlways, lineAlways, Attribute
+    )
 
 {-|
 
-@docs yLine, zLine
+@docs fromY, fromZ
+
+@docs smooth, dashed, areaAlways, lineAlways, Attribute
 
 -}
 
+import Attr
 import Path
 import Shape
+import SubPath
 import Svg.Attributes
 import TypedSvg as S
+import TypedSvg.Attributes as SA
 import TypedSvg.Core as SC
 import W.Chart
 import W.Chart.Internal
@@ -19,17 +27,71 @@ import W.Svg.Circle
 
 
 {-| -}
-yLine : W.Chart.WidgetXY msg x y z a
-yLine =
-    W.Chart.Widget.fromY (\(W.Chart.Internal.RenderData d) -> viewLines .y d.ctx)
-        |> W.Chart.Widget.withHover (\_ data -> viewHover data.x data.y)
+fromY : List Attribute -> W.Chart.WidgetXY msg x y z a
+fromY =
+    Attr.withAttrs defaultAttrs
+        (\attrs ->
+            W.Chart.Widget.fromY (\ctx -> viewLines attrs ctx.y ctx.points.y)
+                |> W.Chart.Widget.withHover (\_ data -> viewHover data.x data.y)
+        )
 
 
 {-| -}
-zLine : W.Chart.WidgetXYZ msg x y z a
-zLine =
-    W.Chart.Widget.fromZ (\(W.Chart.Internal.RenderData d) -> viewLines .z d.ctx)
-        |> W.Chart.Widget.withHover (\_ data -> viewHover data.x data.z)
+fromZ : List Attribute -> W.Chart.WidgetXYZ msg x y z a
+fromZ =
+    Attr.withAttrs defaultAttrs
+        (\attrs ->
+            W.Chart.Widget.fromZ (\ctx -> viewLines attrs ctx.z ctx.points.z)
+                |> W.Chart.Widget.withHover (\_ data -> viewHover data.x data.z)
+        )
+
+
+
+-- Attributes
+
+
+{-| -}
+type alias Attribute =
+    Attr.Attr Attributes
+
+
+type alias Attributes =
+    { smooth : Bool
+    , dashed : Bool
+    , area : Maybe Bool
+    }
+
+
+defaultAttrs : Attributes
+defaultAttrs =
+    { smooth = False
+    , dashed = False
+    , area = Nothing
+    }
+
+
+{-| -}
+smooth : Attribute
+smooth =
+    Attr.attr (\attr -> { attr | smooth = True })
+
+
+{-| -}
+dashed : Attribute
+dashed =
+    Attr.attr (\attr -> { attr | dashed = True })
+
+
+{-| -}
+lineAlways : Attribute
+lineAlways =
+    Attr.attr (\attr -> { attr | area = Just False })
+
+
+{-| -}
+areaAlways : Attribute
+areaAlways =
+    Attr.attr (\attr -> { attr | area = Just True })
 
 
 
@@ -59,38 +121,108 @@ viewHover x ys =
         |> S.g []
 
 
-viewLines : (W.Chart.Internal.ChartPointDict x y z -> List ( W.Chart.Internal.ChartDatum a, List ( W.Chart.Internal.DataPoint x, W.Chart.Internal.DataPoint a ) )) -> W.Chart.Internal.RenderContext x y z -> SC.Svg msg
-viewLines toData ctx =
-    toData ctx.points
-        |> List.indexedMap
-            (\index ( chartDatum, points ) ->
-                let
-                    areaPoints : List (Maybe ( ( Float, Float ), ( Float, Float ) ))
-                    areaPoints =
-                        points
-                            |> List.map (\( x, y ) -> Just ( ( x.render.valueScaled, y.render.valueEnd ), ( x.render.valueScaled, y.render.valueStart ) ))
+viewLines : Attributes -> W.Chart.Internal.RenderAxisYZ a -> List ( W.Chart.Internal.ChartDatum a, List ( W.Chart.Internal.DataPoint x, W.Chart.Internal.DataPoint a ) ) -> SC.Svg msg
+viewLines attrs axis axisPoints =
+    let
+        viewLine_ : Attributes -> Int -> ( W.Chart.Internal.ChartDatum a, List ( W.Chart.Internal.DataPoint x, W.Chart.Internal.DataPoint a ) ) -> SC.Svg msg
+        viewLine_ =
+            case attrs.area of
+                Just True ->
+                    viewLineWithArea
 
-                    linePoints : List (Maybe ( Float, Float ))
-                    linePoints =
-                        List.map (Maybe.map Tuple.second) areaPoints
-                in
-                S.g
-                    []
-                    [ Path.element
-                        (Shape.area Shape.linearCurve areaPoints)
-                        [ Svg.Attributes.class "ew-charts--animate-fade"
-                        , Svg.Attributes.style ("animation-delay:" ++ String.fromInt (index * 400))
-                        , Svg.Attributes.fill chartDatum.color
-                        , Svg.Attributes.fillOpacity "0.2"
-                        ]
-                    , Path.element
-                        (Shape.line Shape.linearCurve linePoints)
-                        [ Svg.Attributes.class "ew-charts--animate-h-clip"
-                        , Svg.Attributes.style ("animation-delay:" ++ String.fromInt (index * 400))
-                        , Svg.Attributes.fill "transparent"
-                        , Svg.Attributes.strokeWidth "2px"
-                        , Svg.Attributes.stroke chartDatum.color
-                        ]
-                    ]
-            )
-        |> S.g []
+                Just False ->
+                    viewLine
+
+                Nothing ->
+                    if axis.isStacked || (List.length axis.data == 1) then
+                        viewLineWithArea
+
+                    else
+                        viewLine
+    in
+    S.g [] (List.indexedMap (viewLine_ attrs) axisPoints)
+
+
+viewLineWithArea : Attributes -> Int -> ( W.Chart.Internal.ChartDatum a, List ( W.Chart.Internal.DataPoint x, W.Chart.Internal.DataPoint a ) ) -> SC.Svg msg
+viewLineWithArea attrs index ( chartDatum, points ) =
+    let
+        areaPoints : List (Maybe ( ( Float, Float ), ( Float, Float ) ))
+        areaPoints =
+            points
+                |> List.map
+                    (\( x, y ) ->
+                        Just
+                            ( ( x.render.valueScaled
+                              , y.render.valueStart
+                              )
+                            , ( x.render.valueScaled
+                              , y.render.valueEnd
+                              )
+                            )
+                    )
+
+        linePoints : List (Maybe ( Float, Float ))
+        linePoints =
+            List.map (Maybe.map Tuple.first) areaPoints
+    in
+    S.g
+        []
+        [ Path.element
+            (Shape.area (shape attrs) areaPoints)
+            [ Svg.Attributes.class "ew-charts--animate-fade"
+            , Svg.Attributes.style ("animation-delay:" ++ String.fromInt (index * 400))
+            , Svg.Attributes.fill chartDatum.color
+            , Svg.Attributes.fillOpacity "0.2"
+            ]
+        , Path.element
+            (Shape.line (shape attrs) linePoints)
+            [ Svg.Attributes.class "ew-charts--animate-h-clip"
+            , Svg.Attributes.style ("animation-delay:" ++ String.fromInt (index * 400))
+            , Svg.Attributes.fill "transparent"
+            , Svg.Attributes.strokeWidth "2px"
+            , Svg.Attributes.stroke chartDatum.color
+            , if attrs.dashed then
+                SA.strokeDasharray "4 4"
+
+              else
+                Svg.Attributes.class ""
+            ]
+        ]
+
+
+viewLine : Attributes -> Int -> ( W.Chart.Internal.ChartDatum a, List ( W.Chart.Internal.DataPoint x, W.Chart.Internal.DataPoint a ) ) -> SC.Svg msg
+viewLine attrs index ( chartDatum, points ) =
+    let
+        linePoints : List (Maybe ( Float, Float ))
+        linePoints =
+            points
+                |> List.map
+                    (\( x, y ) ->
+                        Just
+                            ( x.render.valueScaled
+                            , y.render.valueStart
+                            )
+                    )
+    in
+    Path.element
+        (Shape.line (shape attrs) linePoints)
+        [ Svg.Attributes.class "ew-charts--animate-h-clip"
+        , Svg.Attributes.style ("animation-delay:" ++ String.fromInt (index * 400))
+        , Svg.Attributes.fill "transparent"
+        , Svg.Attributes.strokeWidth "2px"
+        , Svg.Attributes.stroke chartDatum.color
+        , if attrs.dashed then
+            SA.strokeDasharray "4 4"
+
+          else
+            Svg.Attributes.class ""
+        ]
+
+
+shape : Attributes -> List ( Float, Float ) -> SubPath.SubPath
+shape attrs =
+    if attrs.smooth then
+        Shape.monotoneInXCurve
+
+    else
+        Shape.linearCurve

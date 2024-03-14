@@ -1,12 +1,12 @@
 module W.Chart exposing
-    ( globalStyles, fromX, fromXY, fromXYZ, Config, ConfigX, ConfigXY, ConfigXYZ
-    , xAxis, yzAxis, yzListAxis
-    , axisLabel, defaultValue, format, noAxisLine, noGridLines, safety, stacked, stackedRelative, ticks, AxisAttribute
-    , width, ratio, padding, background, binPaddingInner, binPaddingOuter, htmlAttrs, ChartAttribute
-    , view, Widget
-    , withHover, noTooltip, groupByXY, onClick, onMouseEnter, onMouseLeave, Point, PointXY, PointXYZ
+    ( globalStyles, fromX, fromXY, fromXYZ, ConfigX, ConfigXY, ConfigXYZ, Config
+    , xAxis, axis, axisList
+    , axisLabel, defaultValue, format, noAxisLine, noGridLines, safety, stacked, distribution, ticks, AxisAttribute
+    , width, ratio, padding, background, htmlAttrs, ChartAttribute
+    , view, WidgetX, WidgetXY, WidgetXYZ, Widget
+    , withActive, withHover, noTooltip, groupByXY, onClick, onMouseEnter, onMouseLeave, PointX, PointXY, PointXYZ
+    , Point, RenderData, RenderDatum, PointData
     , debug
-    , PointData, PointX, RenderContext, RenderData, RenderDatum, WidgetX, WidgetXY, WidgetXYZ, withActive
     )
 
 {-|
@@ -14,32 +14,37 @@ module W.Chart exposing
 
 # Setup
 
-@docs globalStyles, fromX, fromXY, fromXYZ, Config, ConfigX, ConfigXY, ConfigXYZ
+@docs globalStyles, fromX, fromXY, fromXYZ, ConfigX, ConfigXY, ConfigXYZ, Config
 
 
 # Axis
 
-@docs xAxis, yzAxis, yzListAxis
+@docs xAxis, axis, axisList
 
 
 # Axis Attributes
 
-@docs axisLabel, defaultValue, format, noAxisLine, noGridLines, safety, stacked, stackedRelative, ticks, AxisAttribute
+@docs axisLabel, defaultValue, format, noAxisLine, noGridLines, safety, stacked, distribution, ticks, AxisAttribute
 
 
 # Styles
 
-@docs width, ratio, padding, background, binPaddingInner, binPaddingOuter, htmlAttrs, ChartAttribute
+@docs width, ratio, padding, background, htmlAttrs, ChartAttribute
 
 
 # Widgets
 
-@docs view, Widget
+@docs view, WidgetX, WidgetXY, WidgetXYZ, Widget
 
 
 # Interaction
 
-@docs withHover, noTooltip, groupByXY, onClick, onMouseEnter, onMouseLeave, Point, PointXY, PointXYZ
+@docs withActive, withHover, noTooltip, groupByXY, onClick, onMouseEnter, onMouseLeave, PointX, PointXY, PointXYZ
+
+
+# Tmp
+
+@docs Point, RenderData, RenderDatum, PointData
 
 
 # Debugging
@@ -63,7 +68,7 @@ import TypedSvg.Attributes as SA
 import TypedSvg.Attributes.InPx as SAP
 import TypedSvg.Core as SC
 import TypedSvg.Types as ST
-import W.Chart.Internal exposing (ChartPoint, ChartPointData)
+import W.Chart.Internal
 import W.Chart.Internal.Voronoi
 import W.Chart.Tooltip
 import W.Svg.Attributes
@@ -118,6 +123,7 @@ type alias Point a =
     W.Chart.Internal.DataPoint a
 
 
+{-| -}
 type alias PointData point =
     W.Chart.Internal.ChartPointData point
 
@@ -179,8 +185,8 @@ type alias HoverAttribute msg g =
 
 
 {-| -}
-type alias RenderContext x y z =
-    W.Chart.Internal.RenderContext x y z
+type alias Context x y z =
+    W.Chart.Internal.Context x y z
 
 
 {-| -}
@@ -326,18 +332,6 @@ padding v =
 
 
 {-| -}
-binPaddingOuter : Int -> ChartAttribute msg
-binPaddingOuter v =
-    Attr.attr (\a -> { a | binPaddingOuter = toFloat v })
-
-
-{-| -}
-binPaddingInner : Int -> ChartAttribute msg
-binPaddingInner v =
-    Attr.attr (\a -> { a | binPaddingInner = toFloat v })
-
-
-{-| -}
 background : String -> ChartAttribute msg
 background v =
     Attr.attr (\a -> { a | background = v })
@@ -415,6 +409,7 @@ groupByXY =
 -- Axis
 
 
+{-| -}
 xAxis :
     List AxisAttribute
     ->
@@ -435,7 +430,8 @@ xAxis =
         )
 
 
-yzAxis :
+{-| -}
+axis :
     List AxisAttribute
     ->
         { label : String
@@ -443,7 +439,7 @@ yzAxis :
         , toValue : x -> Maybe Float
         }
     -> AxisConfigYZ x String
-yzAxis =
+axis =
     Attr.withAttrs W.Chart.Internal.defaultAxisAttributes
         (\attrs props ->
             AxisConfig
@@ -456,7 +452,8 @@ yzAxis =
         )
 
 
-yzListAxis :
+{-| -}
+axisList :
     List AxisAttribute
     ->
         { data : List a
@@ -465,7 +462,7 @@ yzListAxis :
         , toValue : a -> x -> Maybe Float
         }
     -> AxisConfigYZ x a
-yzListAxis =
+axisList =
     Attr.withAttrs W.Chart.Internal.defaultAxisAttributes
         (\attrs props -> AxisConfig attrs props)
 
@@ -507,13 +504,13 @@ ticks v =
 {-| -}
 stacked : AxisAttribute
 stacked =
-    Attr.attr (\attrs -> { attrs | stackType = W.Chart.Internal.AbsoluteStack })
+    Attr.attr (\attrs -> { attrs | stackType = W.Chart.Internal.Stacked })
 
 
 {-| -}
-stackedRelative : AxisAttribute
-stackedRelative =
-    Attr.attr (\attrs -> { attrs | stackType = W.Chart.Internal.RelativeStack })
+distribution : AxisAttribute
+distribution =
+    Attr.attr (\attrs -> { attrs | stackType = W.Chart.Internal.Distribution })
 
 
 
@@ -532,7 +529,7 @@ noAxisLine =
 {-| -}
 noGridLines : AxisAttribute
 noGridLines =
-    Attr.attr (\attrs -> { attrs | showGridLines = False })
+    Attr.attr (\attrs -> { attrs | showGrid = False })
 
 
 
@@ -567,24 +564,24 @@ view widgets (W.Chart.Internal.Config cfg) =
                         [ -- Grid
                           W.Chart.Internal.viewTranslateChart d.spacings
                             [ viewYGrid renderData
-                            , viewXGrid renderData
+                            , viewXGrid d.ctx
                             ]
 
                         -- Labels
                         , viewLabels renderData
 
                         -- Axis
-                        , viewXAxis renderData
                         , viewYAxis renderData
                         , viewZAxis renderData
 
                         -- Elements & Hover
                         , W.Chart.Internal.viewTranslateChart d.spacings
-                            [ viewWidgets "bg" .background renderData widgets
+                            [ viewXAxis d.ctx
+                            , viewWidgets "bg" .background renderData widgets
                             , viewWidgets "main" .main renderData widgets
                             , viewWidgets "fg" .foreground renderData widgets
-                            , viewActive cfg renderData widgets
                             , viewHover cfg renderData widgets
+                            , viewActive cfg renderData widgets
                             ]
                         ]
                     ]
@@ -598,13 +595,13 @@ view widgets (W.Chart.Internal.Config cfg) =
 
 viewWidgets :
     String
-    -> (W.Chart.Internal.WidgetData msg x y z point -> Maybe (W.Chart.Internal.RenderData msg x y z -> Svg.Svg msg))
+    -> (W.Chart.Internal.WidgetData msg x y z point -> Maybe (Context x y z -> Svg.Svg msg))
     -> W.Chart.Internal.RenderData msg x y z
     -> List (W.Chart.Internal.Widget msg x y z point)
     -> SC.Svg msg
-viewWidgets class getter renderData widgets =
+viewWidgets class getter (W.Chart.Internal.RenderData { ctx }) widgets =
     widgets
-        |> List.filterMap (\(W.Chart.Internal.Widget w) -> Maybe.map (\el_ -> el_ renderData) (getter w))
+        |> List.filterMap (\(W.Chart.Internal.Widget w) -> Maybe.map (\el_ -> el_ ctx) (getter w))
         |> S.g [ SA.class [ "ew-charts--" ++ class ] ]
 
 
@@ -617,14 +614,13 @@ viewActive cfg (W.Chart.Internal.RenderData d) widgets =
     cfg.activePoint
         |> Maybe.map
             (\pointData ->
-                -- viewChartPoint
-                --     d
-                --     pointData
-                --     widgets
-                --     True
-                --     ( pointData.pos.x, pointData.pos.y )
-                --     |> S.g []
-                S.g [] []
+                viewChartPoint
+                    d
+                    pointData
+                    widgets
+                    True
+                    ( pointData.pos.x, pointData.pos.y )
+                    |> S.g [ Svg.Attributes.class "ew-charts--active" ]
             )
         |> Maybe.withDefault (H.text "")
 
@@ -641,7 +637,16 @@ viewHover :
 viewHover cfg (W.Chart.Internal.RenderData d) widgets =
     cfg.hover
         |> Maybe.map
-            (\hoverAttrs ->
+            (\hoverAttrs_ ->
+                let
+                    hoverAttrs : W.Chart.Internal.HoverAttrs msg point
+                    hoverAttrs =
+                        if cfg.activePoint == Nothing then
+                            hoverAttrs_
+
+                        else
+                            { hoverAttrs_ | tooltip = False }
+                in
                 if hoverAttrs.nearest then
                     viewHoverNearest cfg hoverAttrs d widgets
 
@@ -673,7 +678,7 @@ viewHoverX cfg hoverAttrs d widgets =
                         }
                 in
                 [ S.rect
-                    ([ SAP.x xData.pos.x
+                    ([ SAP.x xData.x.render.valueStart
                      , SAP.y 0
                      , SAP.width (Scale.bandwidth d.x.bandScale)
                      , SAP.height d.spacings.chart.height
@@ -795,7 +800,7 @@ viewHoverAttrs hoverAttrs point =
 
 
 viewHoverWidgets :
-    RenderContext x y z
+    Context x y z
     -> PointData point
     -> List (W.Chart.Internal.Widget msg x y z point)
     -> SC.Svg msg
@@ -883,7 +888,7 @@ viewLabels (W.Chart.Internal.RenderData d) =
 
 viewYGrid : W.Chart.Internal.RenderData msg x y z -> SC.Svg msg
 viewYGrid (W.Chart.Internal.RenderData d) =
-    case ( d.attrs.yAxis.showGridLines, d.y ) of
+    case ( d.attrs.yAxis.showGrid, d.y ) of
         ( True, Just yData ) ->
             Scale.ticks yData.scale d.attrs.yAxis.ticks
                 |> List.map
@@ -909,52 +914,76 @@ viewYGrid (W.Chart.Internal.RenderData d) =
             H.text ""
 
 
-viewXGrid : W.Chart.Internal.RenderData msg x y z -> SC.Svg msg
-viewXGrid (W.Chart.Internal.RenderData d) =
-    case ( d.attrs.yAxis.showGridLines, d.y ) of
-        ( True, Just _ ) ->
-            Scale.ticks d.x.scale d.attrs.xAxis.ticks
-                |> List.map
-                    (\tick ->
-                        let
-                            x : Float
-                            x =
-                                Scale.convert d.x.scale tick
-                        in
+viewXGrid : Context x y z -> SC.Svg msg
+viewXGrid ctx =
+    if ctx.x.showGrid then
+        let
+            step : Int
+            step =
+                List.length ctx.x.data // ctx.x.ticks
+        in
+        ctx.points.byX
+            |> Dict.values
+            |> List.indexedMap
+                (\index { x } ->
+                    if modBy step index == 0 then
                         S.line
-                            [ SA.y1 (ST.px 0)
-                            , SA.y2 (ST.px d.spacings.chart.height)
-                            , SA.x1 (ST.px x)
-                            , SA.x2 (ST.px x)
+                            [ SAP.x1 x.render.valueScaled
+                            , SAP.x2 x.render.valueScaled
+                            , SAP.y1 0
+                            , SAP.y2 ctx.y.range
                             , SA.strokeWidth (ST.px 1.0)
                             , Svg.Attributes.stroke (Theme.baseAuxWithAlpha 0.1)
                             ]
                             []
+
+                    else
+                        H.text ""
+                )
+            |> S.g []
+
+    else
+        H.text ""
+
+
+viewXAxis : Context x y z -> SC.Svg msg
+viewXAxis ctx =
+    if ctx.x.showAxis then
+        let
+            step : Int
+            step =
+                List.length ctx.x.data // ctx.x.ticks
+        in
+        W.Chart.Internal.viewTranslate
+            { x = 0
+            , y = ctx.y.range
+            }
+            [ S.line
+                [ SAP.x1 0
+                , SAP.x2 ctx.x.range
+                , SAP.y1 0
+                , SAP.y2 0
+                , SAP.strokeWidth 2
+                , Svg.Attributes.stroke Theme.baseAux
+                ]
+                []
+            , ctx.x.data
+                |> List.indexedMap
+                    (\index x ->
+                        if modBy step index == 0 then
+                            S.text_
+                                [ SA.textAnchor ST.AnchorMiddle
+                                , SAP.y (labelFontSize + 8)
+                                , SAP.x (Scale.convert ctx.x.scale x)
+                                , Svg.Attributes.fill (Theme.baseForegroundWithAlpha 0.6)
+                                , SAP.fontSize labelFontSize
+                                ]
+                                [ SC.text (ctx.x.format x) ]
+
+                        else
+                            H.text ""
                     )
                 |> S.g []
-
-        _ ->
-            H.text ""
-
-
-viewXAxis : W.Chart.Internal.RenderData msg x y z -> SC.Svg msg
-viewXAxis (W.Chart.Internal.RenderData d) =
-    if d.attrs.xAxis.showAxis then
-        W.Chart.Internal.viewTranslate
-            { x = d.spacings.padding.left
-            , y = d.spacings.padding.top + d.spacings.chart.height
-            }
-            [ S.g
-                [ SA.class [ "ew-charts--x-axis" ] ]
-                [ Axis.bottom
-                    [ Axis.tickCount 5
-                    , Axis.tickSizeOuter 0
-                    , Axis.tickSizeInner 6
-                    , Axis.tickPadding 6
-                    , Axis.tickFormat d.x.toLabel
-                    ]
-                    d.x.scale
-                ]
             ]
 
     else
@@ -964,7 +993,7 @@ viewXAxis (W.Chart.Internal.RenderData d) =
 viewYAxis : W.Chart.Internal.RenderData msg x y z -> SC.Svg msg
 viewYAxis (W.Chart.Internal.RenderData d) =
     case ( d.attrs.yAxis.showAxis, d.y ) of
-        ( True, Just yData ) ->
+        ( True, Just _ ) ->
             W.Chart.Internal.viewTranslate
                 { x = d.spacings.padding.left
                 , y = d.spacings.padding.top
@@ -973,9 +1002,9 @@ viewYAxis (W.Chart.Internal.RenderData d) =
                     [ SA.class [ "ew-charts--y-axis" ] ]
                     [ viewAxis
                         Axis.left
-                        { ticks = 5
-                        , format = d.attrs.yAxis.format
-                        , scale = yData.scale
+                        { ticks = d.ctx.y.ticks
+                        , format = d.ctx.y.format
+                        , scale = d.ctx.y.scale
                         }
                     ]
                 ]
@@ -987,7 +1016,7 @@ viewYAxis (W.Chart.Internal.RenderData d) =
 viewZAxis : W.Chart.Internal.RenderData msg x y z -> SC.Svg msg
 viewZAxis (W.Chart.Internal.RenderData d) =
     case ( d.attrs.zAxis.showAxis, d.z ) of
-        ( True, Just zData ) ->
+        ( True, Just _ ) ->
             W.Chart.Internal.viewTranslate
                 { x = d.spacings.padding.left + d.spacings.chart.width
                 , y = d.spacings.padding.top
@@ -996,9 +1025,9 @@ viewZAxis (W.Chart.Internal.RenderData d) =
                     [ SA.class [ "ew-charts--z-axis" ] ]
                     [ viewAxis
                         Axis.right
-                        { ticks = 5
-                        , format = d.attrs.zAxis.format
-                        , scale = zData.scale
+                        { ticks = d.ctx.z.ticks
+                        , format = d.ctx.z.format
+                        , scale = d.ctx.z.scale
                         }
                     ]
                 ]
@@ -1019,8 +1048,8 @@ viewAxis :
         , scale : Axis.RenderableScale x domain range a
         }
     -> SC.Svg msg
-viewAxis axis props =
-    axis
+viewAxis axis_ props =
+    axis_
         [ Axis.tickCount props.ticks
         , Axis.tickSizeOuter 0
         , Axis.tickSizeInner 6
@@ -1102,9 +1131,12 @@ globalStyles =
 
             /* Hover */
 
+            .ew-charts--active,
+            .ew-charts--hover {
+                pointer-events: none;
+            }
             .ew-charts--hover {
                 display: none;
-                pointer-events: none;
             }
             .ew-charts--hover-target:hover + .ew-charts--hover {
                 display: block;
@@ -1146,8 +1178,7 @@ globalStyles =
                 margin: 0;
             }
 
-            .ew-charts--tooltip-x,
-            .ew-charts--tooltip-yz {
+            .ew-charts--tooltip-x {
                 padding: 4px;
             }
 
@@ -1167,13 +1198,13 @@ globalStyles =
             }
 
             .ew-charts--tooltip-yz--label {
-                padding: 4px 0;
+                padding: 4px 0 0;
             }
 
             .ew-charts--tooltip-yz--list {
                 list-style-type: none;
                 margin: 0;
-                padding: 0;
+                padding: 4px 0;
             }
 
             .ew-charts--tooltip-yz--item {

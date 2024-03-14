@@ -20,7 +20,7 @@ viewPoints d pointData =
         []
         [ H.h1
             [ HA.class "ew-charts--tooltip-x" ]
-            [ H.text pointData.x.valueString
+            [ H.text pointData.x.label
             ]
         , viewDataset d.attrs.yAxis pointData.y
         , viewDataset d.attrs.zAxis pointData.z

@@ -1,12 +1,19 @@
-module W.Chart.Bar exposing (yBars, zBars, yzBars)
+module W.Chart.Bar exposing
+    ( fromY, fromZ, fromYZ
+    , margins, Attribute
+    )
 
 {-|
 
-@docs yBars, zBars, yzBars
+@docs fromY, fromZ, fromYZ
+
+@docs margins, Attribute
 
 -}
 
+import Attr
 import Scale
+import Svg
 import Svg.Attributes
 import TypedSvg as S
 import TypedSvg.Attributes.InPx as SAP
@@ -18,96 +25,163 @@ import W.Svg.Attributes
 
 
 {-| -}
-yBars : W.Chart.WidgetXY msg x y z a
-yBars =
-    W.Chart.Widget.fromY
-        (viewBars
-            (\ctx ->
-                List.map
-                    W.Chart.Internal.toDataPointsRender
-                    ctx.y
-            )
+fromY : List Attribute -> W.Chart.WidgetXY msg x y z a
+fromY =
+    Attr.withAttrs defaultAttrs
+        (\attrs ->
+            W.Chart.Widget.fromY
+                (\ctx ->
+                    viewBars
+                        ctx
+                        ctx.y
+                        (toBinScale attrs ctx (binCount ctx.y))
+                        (toIndexed ctx.y 0 ctx.points.y)
+                )
+                |> W.Chart.Widget.withHover
+                    (\ctx ->
+                        let
+                            binScale : Scale.BandScale Int
+                            binScale =
+                                toBinScale attrs ctx (binCount ctx.y)
+                        in
+                        \pointData ->
+                            viewHover
+                                ctx.y
+                                binScale
+                                pointData.x
+                                (toIndexed ctx.y 0 pointData.y)
+                    )
         )
-        |> W.Chart.Widget.withHover
-            (\ctx ->
-                let
-                    binScale : Scale.BandScale Int
-                    binScale =
-                        toBinScale ctx (binCount ctx.y)
-                in
-                \pointData ->
-                    viewHover
-                        binScale
-                        pointData.x
-                        pointData.y
-            )
 
 
 {-| -}
-zBars : W.Chart.WidgetXYZ msg x y z a
-zBars =
-    W.Chart.Widget.fromZ
-        (viewBars
-            (\ctx ->
-                List.map
-                    W.Chart.Internal.toDataPointsRender
-                    ctx.z
-            )
+fromZ : List Attribute -> W.Chart.WidgetXYZ msg x y z a
+fromZ =
+    Attr.withAttrs defaultAttrs
+        (\attrs ->
+            W.Chart.Widget.fromZ
+                (\ctx ->
+                    viewBars
+                        ctx
+                        ctx.z
+                        (toBinScale attrs ctx (binCount ctx.z))
+                        (toIndexed ctx.z 0 ctx.points.z)
+                )
+                |> W.Chart.Widget.withHover
+                    (\ctx ->
+                        let
+                            binScale : Scale.BandScale Int
+                            binScale =
+                                toBinScale attrs ctx (binCount ctx.z)
+                        in
+                        \pointData ->
+                            viewHover ctx.z binScale pointData.x (toIndexed ctx.z 0 pointData.z)
+                    )
         )
-        |> W.Chart.Widget.withHover
-            (\ctx ->
-                let
-                    binScale : Scale.BandScale Int
-                    binScale =
-                        toBinScale ctx (binCount ctx.z)
-                in
-                \pointData ->
-                    viewHover binScale pointData.x pointData.z
-            )
 
 
 {-| -}
-yzBars : W.Chart.WidgetXYZ msg x y z a
-yzBars =
-    W.Chart.Widget.fromYZ
-        (viewBars
-            (\ctx ->
-                List.map W.Chart.Internal.toDataPointsRender ctx.y ++ List.map W.Chart.Internal.toDataPointsRender ctx.z
-            )
+fromYZ : List Attribute -> W.Chart.WidgetXYZ msg x y z a
+fromYZ =
+    Attr.withAttrs defaultAttrs
+        (\attrs ->
+            W.Chart.Widget.fromYZ
+                (\ctx ->
+                    let
+                        yCount : Int
+                        yCount =
+                            binCount ctx.y
+
+                        zCount : Int
+                        zCount =
+                            binCount ctx.z
+
+                        binScale : Scale.BandScale Int
+                        binScale =
+                            toBinScale attrs ctx (yCount + zCount)
+                    in
+                    S.g []
+                        [ viewBars ctx ctx.y binScale (toIndexed ctx.y 0 ctx.points.y)
+                        , viewBars ctx ctx.z binScale (toIndexed ctx.z yCount ctx.points.z)
+                        ]
+                )
+                |> W.Chart.Widget.withHover
+                    (\ctx ->
+                        let
+                            yCount : Int
+                            yCount =
+                                binCount ctx.y
+
+                            zCount : Int
+                            zCount =
+                                binCount ctx.z
+
+                            binScale : Scale.BandScale Int
+                            binScale =
+                                toBinScale attrs ctx (yCount + zCount)
+                        in
+                        \pointData ->
+                            let
+                                yItems : List ( Int, W.Chart.RenderDatum )
+                                yItems =
+                                    toIndexed ctx.y 0 pointData.y
+
+                                zItems : List ( Int, W.Chart.RenderDatum )
+                                zItems =
+                                    toIndexed ctx.z yCount pointData.z
+                            in
+                            S.g []
+                                [ viewHover ctx.y binScale pointData.x yItems
+                                , viewHover ctx.z binScale pointData.x zItems
+                                ]
+                    )
         )
-        |> W.Chart.Widget.withHover
-            (\ctx ->
-                let
-                    binScale : Scale.BandScale Int
-                    binScale =
-                        toBinScale ctx (binCount ctx.y + binCount ctx.z)
-                in
-                \pointData ->
-                    viewHover binScale pointData.x (pointData.y ++ pointData.z)
-            )
+
+
+
+-- Attributes
+
+
+{-| -}
+type alias Attribute =
+    Attr.Attr Attributes
+
+
+type alias Attributes =
+    { outerMargin : Float
+    , innerMargin : Float
+    }
+
+
+defaultAttrs : Attributes
+defaultAttrs =
+    { innerMargin = 0.2
+    , outerMargin = 0.5
+    }
+
+
+{-| -}
+margins : Float -> Float -> Attribute
+margins innerMargin outerMargin =
+    Attr.attr (\attr -> { attr | innerMargin = innerMargin, outerMargin = outerMargin })
 
 
 
 -- Helpers
 
 
-viewHover : Scale.BandScale Int -> W.Chart.Internal.RenderDatum -> List W.Chart.Internal.RenderDatum -> SC.Svg msg
-viewHover binScale xPoint yzPoints =
+viewHover : W.Chart.Internal.RenderAxisYZ a -> Scale.BandScale Int -> W.Chart.Internal.RenderDatum -> List ( Int, W.Chart.Internal.RenderDatum ) -> SC.Svg msg
+viewHover axis binScale xPoint yzPoints =
     yzPoints
-        |> List.indexedMap
-            (\index yzPoint ->
+        |> List.map
+            (\( index, yzPoint ) ->
                 let
                     x : Float
                     x =
                         xPoint.valueStart + Scale.convert binScale index
                 in
-                S.rect
-                    [ Svg.Attributes.fill yzPoint.color
-                    , SAP.x x
-                    , SAP.y yzPoint.valueStart
-                    , SAP.width (Scale.bandwidth binScale)
-                    , SAP.height (abs (yzPoint.valueStart - yzPoint.valueEnd))
-                    , Svg.Attributes.stroke "white"
+                viewBar
+                    [ Svg.Attributes.stroke "white"
                     , SAP.strokeWidth 2
                     , W.Svg.Attributes.dropShadow
                         { xOffset = 0
@@ -116,67 +190,100 @@ viewHover binScale xPoint yzPoints =
                         , color = yzPoint.color
                         }
                     ]
-                    []
+                    { color = yzPoint.color
+                    , x = x
+                    , y = yzPoint.valueStart
+                    , width = Scale.bandwidth binScale
+                    , height = abs (yzPoint.valueStart - yzPoint.valueEnd)
+                    , axis = axis
+                    }
             )
         |> S.g []
 
 
-viewBars : (W.Chart.Internal.ChartPointDict x y z -> List W.Chart.Internal.AxisDataPointsRender) -> W.Chart.Internal.RenderData msg x y z -> SC.Svg msg
-viewBars toPoints (W.Chart.Internal.RenderData { ctx }) =
-    let
-        data : List W.Chart.Internal.AxisDataPointsRender
-        data =
-            toPoints ctx.points
-
-        binScale : Scale.BandScale Int
-        binScale =
-            toBinScale ctx (List.length data)
-    in
-    toPoints ctx.points
-        |> List.map
-            (\( axisDatum, points ) ->
+viewBars : W.Chart.Widget.Context x y z -> W.Chart.Internal.RenderAxisYZ a -> Scale.BandScale Int -> List ( Int, W.Chart.Internal.AxisDataPoints x a ) -> SC.Svg msg
+viewBars ctx axis binScale indexedAxes =
+    indexedAxes
+        |> List.concatMap
+            (\( index, ( axisDatum, points ) ) ->
                 points
-                    |> List.indexedMap
-                        (\index ( xPoint, yzPoint ) ->
+                    |> List.map
+                        (\( xPoint, yzPoint ) ->
                             let
                                 x : Float
                                 x =
-                                    xPoint.valueStart + Scale.convert binScale index
+                                    xPoint.render.valueStart + Scale.convert binScale index
                             in
                             S.g
                                 [ W.Chart.Internal.attrAnimationDelayX ctx x
-                                , W.Chart.Internal.attrTransformOrigin x ctx.y.zero
+                                , W.Chart.Internal.attrTransformOrigin x axis.zero
                                 , Svg.Attributes.class "ew-charts--animate-scale-z"
                                 ]
-                                [ S.rect
-                                    [ Svg.Attributes.fill axisDatum.color
-                                    , SAP.x x
-                                    , SAP.y yzPoint.valueStart
-                                    , SAP.width (Scale.bandwidth binScale)
-                                    , SAP.height (abs (yzPoint.valueStart - yzPoint.valueEnd))
-                                    ]
-                                    []
+                                [ viewBar []
+                                    { color = axisDatum.color
+                                    , x = x
+                                    , y = yzPoint.render.valueStart
+                                    , width = Scale.bandwidth binScale
+                                    , height = abs (yzPoint.render.valueStart - yzPoint.render.valueEnd)
+                                    , axis = axis
+                                    }
                                 ]
                         )
             )
-        |> List.concat
         |> S.g []
+
+
+viewBar :
+    List (Svg.Attribute msg)
+    ->
+        { color : String
+        , x : Float
+        , y : Float
+        , width : Float
+        , height : Float
+        , axis : W.Chart.Internal.RenderAxisYZ a
+        }
+    -> SC.Svg msg
+viewBar attrs props =
+    S.rect
+        ([ Svg.Attributes.fill props.color
+         , SAP.x props.x
+         , SAP.width props.width
+         , SAP.height props.height
+         , if props.axis.isStacked || props.y < props.axis.zero then
+            SAP.y props.y
+
+           else
+            SAP.y props.axis.zero
+         ]
+            ++ attrs
+        )
+        []
 
 
 binCount : W.Chart.Internal.RenderAxisYZ a -> Int
 binCount axis =
-    if axis.attrs.stackType == W.Chart.Internal.NoStack then
-        List.length axis.data
-
-    else
+    if axis.isStacked then
         1
 
+    else
+        List.length axis.data
 
-toBinScale : W.Chart.RenderContext x y z -> Int -> Scale.BandScale Int
-toBinScale ctx count =
+
+toIndexed : W.Chart.Internal.RenderAxisYZ a -> Int -> List item -> List ( Int, item )
+toIndexed axis offset points =
+    if axis.isStacked then
+        List.map (Tuple.pair offset) points
+
+    else
+        List.indexedMap (\index a -> ( index + offset, a )) points
+
+
+toBinScale : Attributes -> W.Chart.Widget.Context x y z -> Int -> Scale.BandScale Int
+toBinScale attrs ctx count =
     Scale.band
-        { paddingInner = 0.2 -- TODO: Get from attrs
-        , paddingOuter = 0.5 -- TODO: Get from attrs
+        { paddingInner = attrs.innerMargin
+        , paddingOuter = attrs.outerMargin
         , align = 0.5
         }
         ( 0, Scale.bandwidth ctx.x.binScale )

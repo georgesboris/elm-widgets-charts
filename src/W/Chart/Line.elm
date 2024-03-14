@@ -6,14 +6,12 @@ module W.Chart.Line exposing (yLine, zLine)
 
 -}
 
-import Html as H
 import Path
-import Scale
 import Shape
 import Svg.Attributes
-import Theme
 import TypedSvg as S
 import TypedSvg.Core as SC
+import W.Chart
 import W.Chart.Internal
 import W.Chart.Widget
 import W.Svg.Attributes
@@ -21,108 +19,78 @@ import W.Svg.Circle
 
 
 {-| -}
-yLine : W.Chart.Internal.Widget msg x y z
+yLine : W.Chart.WidgetXY msg x y z a
 yLine =
-    W.Chart.Widget.fromY (viewLines .y)
-        |> W.Chart.Widget.withHoverY (\_ -> viewHover)
+    W.Chart.Widget.fromY (\(W.Chart.Internal.RenderData d) -> viewLines .y d.ctx)
+        |> W.Chart.Widget.withHover (\_ data -> viewHover data.x data.y)
 
 
 {-| -}
-zLine : W.Chart.Internal.Widget msg x y z
+zLine : W.Chart.WidgetXYZ msg x y z a
 zLine =
-    W.Chart.Widget.fromZ (viewLines .z)
-        |> W.Chart.Widget.withHoverZ (\_ -> viewHover)
+    W.Chart.Widget.fromZ (\(W.Chart.Internal.RenderData d) -> viewLines .z d.ctx)
+        |> W.Chart.Widget.withHover (\_ data -> viewHover data.x data.z)
 
 
 
 -- Helpers
 
 
-viewHover :
-    W.Chart.Internal.RenderDataYZ x a
-    -> W.Chart.Internal.DataPoint x
-    -> List (W.Chart.Internal.DataPoint a)
-    -> SC.Svg msg
-viewHover yzData xPoint yzPoints =
-    S.g
-        []
-        (List.map
-            (\yzPoint ->
+viewHover : W.Chart.Internal.RenderDatum -> List W.Chart.Internal.RenderDatum -> SC.Svg msg
+viewHover x ys =
+    ys
+        |> List.map
+            (\y ->
                 W.Svg.Circle.view
-                    [ Svg.Attributes.fill Theme.baseBackground
-                    , Svg.Attributes.stroke (yzData.toColor yzPoint.datum)
+                    [ Svg.Attributes.fill y.color
+                    , Svg.Attributes.stroke "white"
                     , W.Svg.Attributes.dropShadow
                         { xOffset = 0
                         , yOffset = 0
                         , radius = 4.0
-                        , color = yzData.toColor yzPoint.datum
+                        , color = y.color
                         }
                     ]
-                    { x = xPoint.valueScaled
-                    , y = yzPoint.valueStart
+                    { x = x.valueScaled
+                    , y = y.valueScaled
                     , radius = 4.0
                     }
             )
-            yzPoints
-        )
+        |> S.g []
 
 
-viewLines :
-    (W.Chart.Internal.RenderDataFull msg x y z -> Maybe (W.Chart.Internal.RenderDataYZ x a))
-    -> W.Chart.Internal.RenderData msg x y z
-    -> SC.Svg msg
-viewLines toRenderDataset (W.Chart.Internal.RenderData d) =
-    toRenderDataset d
-        |> Maybe.map
-            (\renderDataset ->
-                renderDataset.values
-                    |> List.indexedMap
-                        (\index data ->
-                            let
-                                areaPoints : List (Maybe ( ( Float, Float ), ( Float, Float ) ))
-                                areaPoints =
-                                    List.map2
-                                        (\x ( low, high ) ->
-                                            let
-                                                xConverted : Float
-                                                xConverted =
-                                                    Scale.convert d.x.scale x
-                                            in
-                                            Just
-                                                ( ( xConverted
-                                                  , Scale.convert renderDataset.scale low
-                                                  )
-                                                , ( xConverted
-                                                  , Scale.convert renderDataset.scale high
-                                                  )
-                                                )
-                                        )
-                                        d.x.data
-                                        data.stackedValues
+viewLines : (W.Chart.Internal.ChartPointDict x y z -> List ( W.Chart.Internal.ChartDatum a, List ( W.Chart.Internal.DataPoint x, W.Chart.Internal.DataPoint a ) )) -> W.Chart.Internal.RenderContext x y z -> SC.Svg msg
+viewLines toData ctx =
+    toData ctx.points
+        |> List.indexedMap
+            (\index ( chartDatum, points ) ->
+                let
+                    areaPoints : List (Maybe ( ( Float, Float ), ( Float, Float ) ))
+                    areaPoints =
+                        points
+                            |> List.map (\( x, y ) -> Just ( ( x.render.valueScaled, y.render.valueEnd ), ( x.render.valueScaled, y.render.valueStart ) ))
 
-                                linePoints : List (Maybe ( Float, Float ))
-                                linePoints =
-                                    List.map (Maybe.map Tuple.second) areaPoints
-                            in
-                            S.g
-                                []
-                                [ Path.element
-                                    (Shape.area Shape.linearCurve areaPoints)
-                                    [ Svg.Attributes.class "ew-charts--animate-fade"
-                                    , Svg.Attributes.style ("animation-delay:" ++ String.fromInt (index * 400))
-                                    , Svg.Attributes.fill data.color
-                                    , Svg.Attributes.fillOpacity "0.2"
-                                    ]
-                                , Path.element
-                                    (Shape.line Shape.linearCurve linePoints)
-                                    [ Svg.Attributes.class "ew-charts--animate-h-clip"
-                                    , Svg.Attributes.style ("animation-delay:" ++ String.fromInt (index * 400))
-                                    , Svg.Attributes.fill "transparent"
-                                    , Svg.Attributes.strokeWidth "2px"
-                                    , Svg.Attributes.stroke data.color
-                                    ]
-                                ]
-                        )
-                    |> S.g []
+                    linePoints : List (Maybe ( Float, Float ))
+                    linePoints =
+                        List.map (Maybe.map Tuple.second) areaPoints
+                in
+                S.g
+                    []
+                    [ Path.element
+                        (Shape.area Shape.linearCurve areaPoints)
+                        [ Svg.Attributes.class "ew-charts--animate-fade"
+                        , Svg.Attributes.style ("animation-delay:" ++ String.fromInt (index * 400))
+                        , Svg.Attributes.fill chartDatum.color
+                        , Svg.Attributes.fillOpacity "0.2"
+                        ]
+                    , Path.element
+                        (Shape.line Shape.linearCurve linePoints)
+                        [ Svg.Attributes.class "ew-charts--animate-h-clip"
+                        , Svg.Attributes.style ("animation-delay:" ++ String.fromInt (index * 400))
+                        , Svg.Attributes.fill "transparent"
+                        , Svg.Attributes.strokeWidth "2px"
+                        , Svg.Attributes.stroke chartDatum.color
+                        ]
+                    ]
             )
-        |> Maybe.withDefault (H.text "")
+        |> S.g []

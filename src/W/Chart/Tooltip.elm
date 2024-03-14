@@ -13,53 +13,52 @@ import W.Chart.Internal
 
 viewPoints :
     W.Chart.Internal.RenderDataFull msg x y z
-    -> W.Chart.Internal.ChartPoint x y z
+    -> W.Chart.Internal.ChartPointData point
     -> H.Html msg
 viewPoints d pointData =
     H.div
         []
         [ H.h1
             [ HA.class "ew-charts--tooltip-x" ]
-            [ H.text (d.x.toLabel pointData.x.datum)
+            [ H.text pointData.x.valueString
             ]
-        , viewDataset d.y d.attrs.yAxis pointData.ys
-        , viewDataset d.z d.attrs.zAxis pointData.zs
+        , viewDataset d.attrs.yAxis pointData.y
+        , viewDataset d.attrs.zAxis pointData.z
         ]
 
 
 viewDataset :
-    Maybe (W.Chart.Internal.RenderDataYZ x a)
-    -> W.Chart.Internal.AxisAttributes
-    -> List (W.Chart.Internal.DataPoint a)
+    W.Chart.Internal.AxisAttributes
+    -> List W.Chart.Internal.RenderDatum
     -> H.Html msg
-viewDataset maybeDataset datasetAttrs dataPoints =
-    maybeDataset
-        |> W.Chart.Internal.maybeFilter (\_ -> not <| List.isEmpty dataPoints)
+viewDataset datasetAttrs dataPoints =
+    dataPoints
+        |> W.Chart.Internal.maybeIf (not << List.isEmpty)
         |> Maybe.map
-            (\dataset ->
+            (\_ ->
                 H.section
                     [ HA.class "ew-charts--tooltip-yz" ]
                     [ datasetAttrs.label
                         |> Maybe.map (\l -> H.h2 [ HA.class "ew-charts--tooltip-yz--label" ] [ H.text l ])
                         |> Maybe.withDefault (H.text "")
                     , H.ul [ HA.class "ew-charts--tooltip-yz--list" ]
-                        (List.map (viewItem dataset) dataPoints)
+                        (List.map viewItem dataPoints)
                     ]
             )
         |> Maybe.withDefault (H.text "")
 
 
-viewItem : W.Chart.Internal.RenderDataYZ x a -> W.Chart.Internal.DataPoint a -> H.Html msg
-viewItem dataset point =
+viewItem : W.Chart.Internal.RenderDatum -> H.Html msg
+viewItem point =
     H.li
         [ HA.class "ew-charts--tooltip-yz--item" ]
         [ H.span
             [ HA.class "ew-charts--tooltip-yz--item-color"
-            , HA.style "background" (dataset.toColor point.datum)
+            , HA.style "background" point.color
             ]
             []
-        , H.span [ HA.class "ew-charts--tooltip-yz--item-label" ] [ H.text (dataset.toLabel point.datum) ]
-        , H.span [ HA.class "ew-charts--tooltip-yz--item-value" ] [ H.text (String.fromFloat point.value) ]
+        , H.span [ HA.class "ew-charts--tooltip-yz--item-label" ] [ H.text point.label ]
+        , H.span [ HA.class "ew-charts--tooltip-yz--item-value" ] [ H.text point.valueString ]
         ]
 
 

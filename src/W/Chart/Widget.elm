@@ -1,17 +1,18 @@
 module W.Chart.Widget exposing
     ( empty, fromX, fromY, fromZ, fromYZ
-    , withBackground, withForeground, withHoverX, withHoverY, withHoverYZ, withHoverZ
+    , withBackground, withForeground, withHover
     )
 
 {-|
 
 @docs empty, fromX, fromY, fromZ, fromYZ
-@docs withBackground, withForeground, withHoverX, withHoverY, withHoverYZ, withHoverZ
+@docs withBackground, withForeground, withHover
 
 -}
 
 import Svg
-import W.Chart.Internal exposing (DataPoint, Widget(..))
+import W.Chart
+import W.Chart.Internal exposing (Widget(..))
 
 
 
@@ -19,7 +20,7 @@ import W.Chart.Internal exposing (DataPoint, Widget(..))
 
 
 {-| -}
-empty : Widget msg x y z
+empty : Widget msg x y z point
 empty =
     Widget
         { main = Nothing
@@ -30,7 +31,7 @@ empty =
 
 
 {-| -}
-fromX : (W.Chart.Internal.RenderData msg x y z -> Svg.Svg msg) -> Widget msg x y z
+fromX : (W.Chart.Internal.RenderData msg x y z -> Svg.Svg msg) -> W.Chart.WidgetX msg x y z a
 fromX a =
     Widget
         { main = Just a
@@ -41,25 +42,36 @@ fromX a =
 
 
 {-| -}
-fromY :
-    (W.Chart.Internal.RenderData msg x y z
-     -> Svg.Svg msg
-    )
-    -> Widget msg x y z
-fromY =
-    fromX
+fromY : (W.Chart.Internal.RenderData msg x y z -> Svg.Svg msg) -> W.Chart.WidgetXY msg x y z a
+fromY a =
+    Widget
+        { main = Just a
+        , background = Nothing
+        , foreground = Nothing
+        , hover = Nothing
+        }
 
 
 {-| -}
-fromZ : (W.Chart.Internal.RenderData msg x y z -> Svg.Svg msg) -> Widget msg x y z
-fromZ =
-    fromX
+fromZ : (W.Chart.Internal.RenderData msg x y z -> Svg.Svg msg) -> W.Chart.WidgetXYZ msg x y z a
+fromZ a =
+    Widget
+        { main = Just a
+        , background = Nothing
+        , foreground = Nothing
+        , hover = Nothing
+        }
 
 
 {-| -}
-fromYZ : (W.Chart.Internal.RenderData msg x y z -> Svg.Svg msg) -> Widget msg x y z
-fromYZ =
-    fromX
+fromYZ : (W.Chart.Internal.RenderData msg x y z -> Svg.Svg msg) -> W.Chart.WidgetXYZ msg x y z a
+fromYZ a =
+    Widget
+        { main = Just a
+        , background = Nothing
+        , foreground = Nothing
+        , hover = Nothing
+        }
 
 
 
@@ -71,8 +83,8 @@ withBackground :
     (W.Chart.Internal.RenderData msg x y z
      -> Svg.Svg msg
     )
-    -> Widget msg x y z
-    -> Widget msg x y z
+    -> Widget msg x y z point
+    -> Widget msg x y z point
 withBackground v (Widget d) =
     Widget { d | background = Just v }
 
@@ -82,61 +94,16 @@ withForeground :
     (W.Chart.Internal.RenderData msg x y z
      -> Svg.Svg msg
     )
-    -> Widget msg x y z
-    -> Widget msg x y z
+    -> Widget msg x y z point
+    -> Widget msg x y z point
 withForeground v (Widget d) =
     Widget { d | foreground = Just v }
 
 
 {-| -}
-withHoverX :
-    (W.Chart.Internal.RenderDataFull msg x y z
-     -> DataPoint x
-     -> Svg.Svg msg
-    )
-    -> Widget msg x y z
-    -> Widget msg x y z
-withHoverX v (Widget d) =
-    Widget { d | hover = Just (W.Chart.Internal.HoverX v) }
-
-
-{-| -}
-withHoverY :
-    (W.Chart.Internal.RenderDataFull msg x y z
-     -> W.Chart.Internal.RenderDataYZ x y
-     -> DataPoint x
-     -> List (DataPoint y)
-     -> Svg.Svg msg
-    )
-    -> Widget msg x y z
-    -> Widget msg x y z
-withHoverY v (Widget d) =
-    Widget { d | hover = Just (W.Chart.Internal.HoverY v) }
-
-
-{-| -}
-withHoverZ :
-    (W.Chart.Internal.RenderDataFull msg x y z
-     -> W.Chart.Internal.RenderDataYZ x z
-     -> DataPoint x
-     -> List (DataPoint z)
-     -> Svg.Svg msg
-    )
-    -> Widget msg x y z
-    -> Widget msg x y z
-withHoverZ v (Widget d) =
-    Widget { d | hover = Just (W.Chart.Internal.HoverZ v) }
-
-
-{-| -}
-withHoverYZ :
-    (W.Chart.Internal.RenderDataFull msg x y z
-     -> W.Chart.Internal.RenderDataYZ x y
-     -> W.Chart.Internal.RenderDataYZ x z
-     -> W.Chart.Internal.ChartPoint x y z
-     -> Svg.Svg msg
-    )
-    -> Widget msg x y z
-    -> Widget msg x y z
-withHoverYZ v (Widget d) =
-    Widget { d | hover = Just (W.Chart.Internal.HoverYZ v) }
+withHover :
+    (W.Chart.RenderContext x y z -> W.Chart.Internal.ChartPointData point -> Svg.Svg msg)
+    -> Widget msg x y z point
+    -> Widget msg x y z point
+withHover v (Widget d) =
+    Widget { d | hover = Just v }

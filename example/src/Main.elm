@@ -1,11 +1,13 @@
 module Main exposing (main)
 
+import Browser
 import Color
 import Date exposing (Date)
 import Dict exposing (Dict)
 import Html as H
 import Html.Attributes as HA
 import Scale.Color
+import Theme
 import Time exposing (Month(..))
 import W.Chart
 import W.Chart.Bar
@@ -13,6 +15,35 @@ import W.Chart.Bubble
 import W.Chart.Colors
 import W.Chart.Line
 import W.Styles
+
+
+type alias Point =
+    W.Chart.PointXY Date.Date Int
+
+
+type alias Model =
+    { onClick : Maybe Point
+    , onHover : Maybe Point
+    }
+
+
+type Msg
+    = OnClick Point
+    | OnMouseEnter Point
+    | OnMouseLeave Point
+
+
+update : Msg -> Model -> Model
+update msg model =
+    case msg of
+        OnClick v ->
+            { model | onClick = Just v }
+
+        OnMouseEnter v ->
+            { model | onHover = Just v }
+
+        OnMouseLeave _ ->
+            { model | onHover = Nothing }
 
 
 
@@ -129,46 +160,58 @@ formatMoney v =
 -- 2. Exploring visualizations
 
 
-main : H.Html msg
+main : Program () Model Msg
 main =
-    let
-        chartConfig : W.Chart.Config msg Date.Date Int z
-        chartConfig =
-            W.Chart.config []
-                |> W.Chart.withHover
-                    [ W.Chart.groupByXY
+    Browser.sandbox
+        { init = { onClick = Nothing, onHover = Nothing }
+        , update = update
+        , view =
+            \model ->
+                let
+                    chartConfig : W.Chart.ConfigXY Msg Date.Date Int
+                    chartConfig =
+                        W.Chart.fromXY []
+                            { x =
+                                W.Chart.xAxis []
+                                    { data = List.map Tuple.first purchasesList
+                                    , toLabel = Date.format "MMM d"
+                                    }
+                            , y =
+                                W.Chart.yzListAxis [ W.Chart.stacked ]
+                                    { data = List.range 0 19
+                                    , toLabel = String.fromInt
+                                    , toColor = W.Chart.Colors.colorFrom W.Chart.Colors.rainbow
+                                    , toValue = \_ -> purchasesByDay
+                                    }
+                            }
+                            |> W.Chart.withActive model.onClick
+                            |> W.Chart.withHover
+                                [ W.Chart.groupByXY
+
+                                -- , W.Chart.noTooltip
+                                , W.Chart.onClick OnClick
+                                , W.Chart.onMouseEnter OnMouseEnter
+                                , W.Chart.onMouseLeave OnMouseLeave
+                                ]
+                in
+                viewWrapper model
+                    [ chartConfig
+                        |> W.Chart.view
+                            [ W.Chart.Line.yLine
+                            ]
+                    , chartConfig
+                        |> W.Chart.view
+                            [ W.Chart.Bar.yBars
+                            ]
+                    , chartConfig
+                        |> W.Chart.view
+                            [ W.Chart.Bubble.viewY []
+                                { toRadius = \x y -> y.render.value
+                                , toColor = \x y -> y.render.color
+                                }
+                            ]
                     ]
-                |> W.Chart.withX []
-                    { data = List.map Tuple.first purchasesList
-                    , toLabel = Date.format "MMM d"
-                    }
-                |> W.Chart.withYList
-                    [ W.Chart.format formatMoney
-                    , W.Chart.stacked
-                    , W.Chart.axisLabel "Numbers"
-                    ]
-                    { data = List.range 0 19
-                    , toLabel = String.fromInt
-                    , toColor = W.Chart.Colors.colorFrom W.Chart.Colors.rainbow
-                    , toValue = \_ -> purchasesByDay
-                    }
-    in
-    viewWrapper
-        [ chartConfig
-            |> W.Chart.view
-                [ W.Chart.Line.yLine
-                ]
-        , chartConfig
-            |> W.Chart.view
-                [ W.Chart.Bar.yBars
-                ]
-        , chartConfig
-            |> W.Chart.view
-                [ W.Chart.Bubble.viewY []
-                    { toRadius = \_ ( _, v ) -> v
-                    }
-                ]
-        ]
+        }
 
 
 
@@ -215,10 +258,10 @@ zDataset =
             )
 
 
-viewWrapper : List (H.Html msg) -> H.Html msg
-viewWrapper children =
+viewWrapper : Model -> List (H.Html msg) -> H.Html msg
+viewWrapper model children =
     H.div
-        [ HA.style "background" "#ccc"
+        [ HA.style "background" Theme.baseBackground
         , HA.style "min-height" "100vh"
         , HA.style "padding" "20px"
         , HA.style "display" "flex"
@@ -226,14 +269,18 @@ viewWrapper children =
         , HA.style "justify-content" "center"
         ]
         [ W.Styles.globalStyles
-        , W.Styles.baseTheme
+        , Theme.globalProvider Theme.darkTheme
         , W.Chart.globalStyles
+        , globalStyles
+        , viewColor ( 20, 20 ) model.onClick
+        , viewColor ( 80, 20 ) model.onHover
         , children
             |> List.map
                 (\c ->
                     H.div
-                        [ HA.style "background" "#fff"
+                        [ HA.style "background" Theme.baseBackground
                         , HA.style "border-radius" "8px"
+                        , HA.style "box-shadow" "0 0 20px rgba(0,0,0,0.2)"
                         ]
                         [ c ]
                 )
@@ -245,6 +292,38 @@ viewWrapper children =
                 , HA.style "gap" "20px"
                 ]
         ]
+
+
+globalStyles : H.Html msg
+globalStyles =
+    H.node "style"
+        []
+        [ H.text """
+
+.ew-charts--tooltip {
+    font-family: var(--theme-font-text), sans-serif;
+}
+"""
+        ]
+
+
+viewColor : ( Float, Float ) -> Maybe Point -> H.Html msg
+viewColor ( top, right ) maybeColor =
+    maybeColor
+        |> Maybe.map
+            (\_ ->
+                H.div
+                    [ HA.style "width" "40px"
+                    , HA.style "height" "40px"
+                    , HA.style "border-radius" "20px"
+                    , HA.style "position" "fixed"
+                    , HA.style "background" "black"
+                    , HA.style "top" (String.fromFloat top ++ "px")
+                    , HA.style "right" (String.fromFloat right ++ "px")
+                    ]
+                    []
+            )
+        |> Maybe.withDefault (H.text "")
 
 
 

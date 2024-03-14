@@ -3,6 +3,8 @@ module W.Svg.Attributes exposing
     , cond
     , dropShadow
     , filterDropShadow
+    , maybe
+    , none
     )
 
 import Svg
@@ -27,6 +29,13 @@ classList xs =
             )
             ""
         |> Svg.Attributes.class
+
+
+maybe : Maybe a -> (a -> Svg.Attribute msg) -> Svg.Attribute msg
+maybe maybeA fn =
+    maybeA
+        |> Maybe.map fn
+        |> Maybe.withDefault none
 
 
 cond : Bool -> Svg.Attribute msg -> Svg.Attribute msg

@@ -60,6 +60,7 @@ import TypedSvg as S
 import TypedSvg.Attributes as SA
 import TypedSvg.Core as SC
 import TypedSvg.Types as ST
+import W.Chart.Colors
 import W.Chart.Internal.Scale
 
 
@@ -720,6 +721,7 @@ type alias AxisAttributes =
     { label : Maybe String
     , defaultValue : Float
     , format : Float -> String
+    , palette : Int -> String
     , safety : Float
     , ticks : Int
     , scale : ScaleType
@@ -760,6 +762,7 @@ defaultAxisAttributes =
     { label = Nothing
     , defaultValue = 0.0
     , format = defaultFormat
+    , palette = W.Chart.Colors.contrast
     , safety = 0.1
     , ticks = 5
     , scale = Linear

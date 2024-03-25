@@ -8,6 +8,7 @@
         "W.Chart",
         "W.Chart.Bar",
         "W.Chart.Bubble",
+        "W.Chart.Colors",
         "W.Chart.Line",
         "W.Chart.Widget"
     ],
@@ -18,7 +19,7 @@
         "elm/svg": "1.0.0 <= v < 2.0.0",
         "elm-community/typed-svg": "7.0.0 <= v < 8.0.0",
         "folkertdev/one-true-path-experiment": "6.0.0 <= v < 7.0.0",
-        "gampleman/elm-visualization": "2.3.0 <= v < 3.0.0",
+        "gampleman/elm-visualization": "2.4.0 <= v < 3.0.0",
         "georgesboris/elm-attributes": "1.0.0 <= v < 2.0.0",
         "ianmackenzie/elm-geometry": "3.11.0 <= v < 4.0.0",
         "ianmackenzie/elm-units": "2.10.0 <= v < 3.0.0",

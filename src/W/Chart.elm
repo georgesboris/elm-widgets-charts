@@ -1,7 +1,7 @@
 module W.Chart exposing
     ( globalStyles, fromX, fromXY, fromXYZ, ConfigX, ConfigXY, ConfigXYZ, Config
     , xAxis, axis, axisList
-    , axisLabel, defaultValue, format, noAxisLine, noGridLines, safety, stacked, distribution, ticks, AxisAttribute
+    , axisLabel, format, palette, defaultValue, noAxisLine, noGridLines, safety, stacked, distribution, ticks, AxisAttribute
     , width, ratio, padding, background, htmlAttrs, ChartAttribute
     , view, WidgetX, WidgetXY, WidgetXYZ, Widget
     , withActive, withHover, noTooltip, groupByXY, onClick, onMouseEnter, onMouseLeave, PointX, PointXY, PointXYZ
@@ -24,7 +24,7 @@ module W.Chart exposing
 
 # Axis Attributes
 
-@docs axisLabel, defaultValue, format, noAxisLine, noGridLines, safety, stacked, distribution, ticks, AxisAttribute
+@docs axisLabel, format, palette, defaultValue, noAxisLine, noGridLines, safety, stacked, distribution, ticks, AxisAttribute
 
 
 # Styles
@@ -68,6 +68,7 @@ import TypedSvg.Attributes as SA
 import TypedSvg.Attributes.InPx as SAP
 import TypedSvg.Core as SC
 import TypedSvg.Types as ST
+import W.Chart.Colors
 import W.Chart.Internal
 import W.Chart.Internal.Voronoi
 import W.Chart.Tooltip
@@ -487,6 +488,12 @@ defaultValue v =
 format : (Float -> String) -> AxisAttribute
 format v =
     Attr.attr (\attrs -> { attrs | format = v })
+
+
+{-| -}
+palette : W.Chart.Colors.Palette -> AxisAttribute
+palette v =
+    Attr.attr (\attrs -> { attrs | palette = v })
 
 
 {-| -}
@@ -1216,6 +1223,7 @@ globalStyles =
                 margin: 0;
             }
             .ew-charts--tooltip-yz--item-color {
+                flex-shrink: 0;
                 height: 8px;
                 width: 8px;
                 border-radius: 2px;
@@ -1224,7 +1232,9 @@ globalStyles =
                 flex-grow: 1;
                 padding: 0 8px 0 2px;
             }
-            .ew-charts--tooltip-yz--item-value {}
+            .ew-charts--tooltip-yz--item-value {
+                flex-shrink: 0;
+            }
 
             /* Axis & Labels */
 

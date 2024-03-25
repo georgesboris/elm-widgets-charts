@@ -183,10 +183,10 @@ main =
                                     , toLabel = Date.format "MMM d"
                                     }
                             , y =
-                                W.Chart.axisList [ W.Chart.stacked ]
+                                W.Chart.axisList [ W.Chart.stacked, W.Chart.distribution ]
                                     { data = List.range 0 9
                                     , toLabel = String.fromInt
-                                    , toColor = W.Chart.Colors.colorFrom W.Chart.Colors.rainbow
+                                    , toColor = W.Chart.Colors.rainbow
                                     , toValue = \_ -> purchasesByDay
                                     }
                             , z =
@@ -202,15 +202,15 @@ main =
                                 [ W.Chart.onClick OnClick
                                 , W.Chart.onMouseEnter OnMouseEnter
                                 , W.Chart.onMouseLeave OnMouseLeave
-                                , W.Chart.groupByXY
 
+                                -- , W.Chart.groupByXY
                                 -- , W.Chart.noTooltip
                                 ]
                 in
                 viewWrapper model
                     [ chartConfig
                         |> W.Chart.view
-                            [ W.Chart.Line.fromY [ W.Chart.Line.smooth, W.Chart.Line.lineAlways, W.Chart.Line.dashed ]
+                            [ W.Chart.Bar.fromY []
                             ]
                     , chartConfig
                         |> W.Chart.view
@@ -269,7 +269,7 @@ trigFnColor v =
                 Sin ->
                     1
     in
-    W.Chart.Colors.colorFrom W.Chart.Colors.purples index
+    W.Chart.Colors.purple index
 
 
 type alias Data =
@@ -287,7 +287,7 @@ zDataset =
         |> List.indexedMap
             (\index ( label, fn ) ->
                 { label = label
-                , color = W.Chart.Colors.forIndex (index + 3)
+                , color = W.Chart.Colors.contrast (index + 3)
                 , toValue = fn
                 }
             )
